@@ -1,0 +1,26 @@
+# Render Blueprint — one-click deploy
+#
+# 1. Push this file to your repo (already in main).
+# 2. Go to https://dashboard.render.com/blueprints and click
+#    "New Blueprint Instance" → connect this GitHub repo.
+# 3. Render auto-detects this file and creates the service.
+#
+# Free tier: 750 service-hours/month, sleeps after 15 min idle,
+# wakes back up in ~30 s on the next request.
+
+services:
+  - type: web
+    name: studyhub
+    runtime: docker
+    repo: https://github.com/try-ajaypathare/studyhub
+    branch: main
+    region: singapore
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      # Render injects PORT automatically; we read it via getenv.

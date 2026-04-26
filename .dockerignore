@@ -1,0 +1,24 @@
+# Skip build artefacts so they don't bust the cache.
+backend/build/
+*.exe
+*.o
+*.obj
+
+# Editor / OS junk
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Git internals (not needed in image)
+.git/
+.gitignore
+.github/
+
+# Docs
+docs/
+*.md
+
+# Smoke test source — not needed for the production binary
+backend/test_core.cpp

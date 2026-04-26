@@ -2,16 +2,40 @@
 #include "utils/Exceptions.hpp"
 #include "utils/Logger.hpp"
 
-// Force a Vista+ Windows SDK so inet_pton & friends are visible.
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
+// ---------- Cross-platform socket abstraction ----------
+#ifdef _WIN32
+  #ifndef _WIN32_WINNT
+  #define _WIN32_WINNT 0x0600
+  #endif
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+  using socket_t = SOCKET;
+  static const socket_t kInvalidSocket = INVALID_SOCKET;
+  static const int      kSocketError   = SOCKET_ERROR;
+  static int  ssaas_close(socket_t s) { return closesocket(s); }
+  static void ssaas_shutdown(socket_t s) { ::shutdown(s, SD_BOTH); }
+#else
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <arpa/inet.h>
+  #include <unistd.h>
+  #include <signal.h>
+  #include <cerrno>
+  #include <cstring>
+  using socket_t = int;
+  static const socket_t kInvalidSocket = -1;
+  static const int      kSocketError   = -1;
+  static int  ssaas_close(socket_t s) { return ::close(s); }
+  static void ssaas_shutdown(socket_t s) { ::shutdown(s, SHUT_RDWR); }
+  using BOOL = int;
+  #ifndef TRUE
+  #define TRUE 1
+  #endif
 #endif
-
-#include <winsock2.h>
-#include <ws2tcpip.h>
 
 #include <vector>
 #include <string>
+#include <cstring>
 
 namespace ssaas {
 
@@ -33,52 +57,62 @@ HttpServer::~HttpServer() {
 }
 
 void HttpServer::initWinsock() {
+#ifdef _WIN32
     WSADATA wsa;
     int err = WSAStartup(MAKEWORD(2, 2), &wsa);
     if (err != 0)
         throw HttpException(500, "WSAStartup failed: " + std::to_string(err));
+#else
+    // Ignore SIGPIPE — write to a half-closed peer should fail with
+    // EPIPE on send(), not kill the process.
+    signal(SIGPIPE, SIG_IGN);
+#endif
 }
 
 void HttpServer::cleanupWinsock() {
     if (listenSocket) {
-        closesocket(reinterpret_cast<SOCKET>(listenSocket));
+        socket_t s = static_cast<socket_t>(reinterpret_cast<uintptr_t>(listenSocket));
+        ssaas_close(s);
         listenSocket = nullptr;
     }
+#ifdef _WIN32
     WSACleanup();
+#endif
 }
 
 void HttpServer::run() {
-    SOCKET sock = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == INVALID_SOCKET)
+    socket_t sock = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == kInvalidSocket)
         throw HttpException(500, "socket() failed");
-    listenSocket = reinterpret_cast<void*>(sock);
+    listenSocket = reinterpret_cast<void*>(static_cast<uintptr_t>(sock));
 
-    BOOL yes = TRUE;
+    int yes = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
                reinterpret_cast<const char*>(&yes), sizeof(yes));
 
     sockaddr_in addr;
-    ZeroMemory(&addr, sizeof(addr));
+    std::memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port   = htons(static_cast<u_short>(port));
+    addr.sin_port   = htons(static_cast<uint16_t>(port));
     if (host == "0.0.0.0" || host.empty()) {
         addr.sin_addr.s_addr = htonl(INADDR_ANY);
     } else {
-        // inet_addr is deprecated but available in any MinGW. Fine for an OOP demo.
+#ifdef _WIN32
         unsigned long ipNum = inet_addr(host.c_str());
-        if (ipNum == INADDR_NONE) {
-            // Fallback: bind to all interfaces if hostname can't be resolved.
+        if (ipNum == INADDR_NONE)
             addr.sin_addr.s_addr = htonl(INADDR_ANY);
-        } else {
+        else
             addr.sin_addr.s_addr = ipNum;
-        }
+#else
+        if (inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1)
+            addr.sin_addr.s_addr = htonl(INADDR_ANY);
+#endif
     }
 
-    if (::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
-        int e = WSAGetLastError();
-        throw HttpException(500, "bind() failed: " + std::to_string(e));
+    if (::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == kSocketError) {
+        throw HttpException(500, "bind() failed on port " + std::to_string(port));
     }
-    if (::listen(sock, SOMAXCONN) == SOCKET_ERROR) {
+    if (::listen(sock, SOMAXCONN) == kSocketError) {
         throw HttpException(500, "listen() failed");
     }
 
@@ -89,9 +123,13 @@ void HttpServer::run() {
     running = true;
     while (running) {
         sockaddr_in cli;
+#ifdef _WIN32
         int cliSize = sizeof(cli);
-        SOCKET conn = ::accept(sock, reinterpret_cast<sockaddr*>(&cli), &cliSize);
-        if (conn == INVALID_SOCKET) {
+#else
+        socklen_t cliSize = sizeof(cli);
+#endif
+        socket_t conn = ::accept(sock, reinterpret_cast<sockaddr*>(&cli), &cliSize);
+        if (conn == kInvalidSocket) {
             Logger::getInstance().warn("accept() returned invalid socket");
             continue;
         }
@@ -109,7 +147,6 @@ void HttpServer::run() {
             if (buffer.size() > MAX_REQUEST_BYTES) break;
             headerEnd = buffer.find("\r\n\r\n");
             if (headerEnd != std::string::npos) {
-                // If POST, may need full body (Content-Length). Inspect header.
                 std::string head = buffer.substr(0, headerEnd);
                 size_t clPos = head.find("Content-Length:");
                 if (clPos == std::string::npos)
@@ -143,11 +180,11 @@ void HttpServer::run() {
 
         std::string out = resp.serialize();
         ::send(conn, out.c_str(), static_cast<int>(out.size()), 0);
-        ::shutdown(conn, SD_BOTH);
-        ::closesocket(conn);
+        ssaas_shutdown(conn);
+        ssaas_close(conn);
     }
 
-    ::closesocket(sock);
+    ssaas_close(sock);
     listenSocket = nullptr;
     Logger::getInstance().info("Server stopped");
 }

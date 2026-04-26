@@ -29,6 +29,16 @@ struct CliOpts {
 
 CliOpts parseArgs(int argc, char** argv) {
     CliOpts o;
+
+    // Honour Render / Heroku / Fly.io style: read PORT from env if set.
+    if (const char* envPort = std::getenv("PORT")) {
+        try { o.port = std::stoi(envPort); } catch (...) { /* ignore */ }
+    }
+    // Likewise let the host be overridden from env (containers usually want 0.0.0.0).
+    if (const char* envHost = std::getenv("HOST")) o.host = envHost;
+    if (const char* envData = std::getenv("DATA_PATH")) o.dataPath = envData;
+    if (const char* envStatic = std::getenv("STATIC_DIR")) o.staticDir = envStatic;
+
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&](const std::string& flag) -> std::string {
@@ -44,10 +54,10 @@ CliOpts parseArgs(int argc, char** argv) {
         else if (a == "--static" || a == "-s") o.staticDir = next(a);
         else if (a == "--help") {
             std::cout << "SSAAS C++ HTTP server\n"
-                         "  --host    HOST       (default 127.0.0.1)\n"
-                         "  --port    PORT       (default 8080)\n"
-                         "  --data    JSONPATH   (default data/sample_data.json)\n"
-                         "  --static  DIRPATH    (default ../frontend)\n";
+                         "  --host    HOST       (default 127.0.0.1, env HOST)\n"
+                         "  --port    PORT       (default 8080,      env PORT)\n"
+                         "  --data    JSONPATH   (default data/sample_data.json, env DATA_PATH)\n"
+                         "  --static  DIRPATH    (default ../frontend, env STATIC_DIR)\n";
             std::exit(0);
         }
     }

@@ -371,6 +371,37 @@ studyhub/
 
 ---
 
+## ☁️ Deploy to Render (free, one-click)
+
+The repo ships a multi-stage **Dockerfile** + a **render.yaml** blueprint. Render's free tier
+gives you 750 service-hours/month, sleeps after 15 min idle, wakes back up on the next
+request in ~30 s.
+
+```
+1. Push this repo to GitHub (already done).
+2. Go to https://dashboard.render.com/blueprints
+3. Click "New Blueprint Instance" → connect this repo.
+4. Render auto-reads render.yaml and creates the service.
+5. First deploy takes ~3-4 min (Docker build + push).
+6. Open https://studyhub.onrender.com (or the URL Render gives you).
+```
+
+The container picks up the `PORT` env var Render injects, binds to `0.0.0.0`, and serves
+both the REST API and the static frontend from the same process.
+
+> Other free hosts that work the same way: **Fly.io**, **Railway**, **Koyeb** —
+> just point them at the Dockerfile.
+
+### Local Docker build
+
+```bash
+docker build -t studyhub .
+docker run --rm -p 8090:8090 studyhub
+# open http://localhost:8090
+```
+
+---
+
 ## 💡 Why this exists
 
 Built as a deep OOP showcase for an academic course. It is intentionally small enough to read
