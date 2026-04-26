@@ -10,12 +10,16 @@ smart pointers, custom exception hierarchies, and five GoF patterns** (Strategy,
 Singleton, Factory, Repository) — wired together through a hand-written Winsock HTTP server,
 with **no third-party C++ runtime dependencies** beyond a single-header JSON library.
 
+[![Live demo](https://img.shields.io/badge/live-studyhub.onrender.com-4f46e5?logo=render&logoColor=white)](https://studyhub-oe5d.onrender.com)
 [![C++14](https://img.shields.io/badge/C++-14-00599C?logo=cplusplus&logoColor=white)]()
 [![Backend](https://img.shields.io/badge/backend-pure_C++-blue)]()
 [![No deps](https://img.shields.io/badge/runtime_deps-zero-success)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 [![Status](https://img.shields.io/badge/status-active-brightgreen)]()
 [![Patterns](https://img.shields.io/badge/GoF_patterns-5-blueviolet)]()
+[![Keep-alive](https://github.com/try-ajaypathare/studyhub/actions/workflows/keep-alive.yml/badge.svg)](https://github.com/try-ajaypathare/studyhub/actions/workflows/keep-alive.yml)
+
+### 🌐 [https://studyhub-oe5d.onrender.com](https://studyhub-oe5d.onrender.com)
 
 </div>
 
@@ -371,26 +375,59 @@ studyhub/
 
 ---
 
-## ☁️ Deploy to Render (free, one-click)
+## ☁️ Live deployment
 
-The repo ships a multi-stage **Dockerfile** + a **render.yaml** blueprint. Render's free tier
-gives you 750 service-hours/month, sleeps after 15 min idle, wakes back up on the next
-request in ~30 s.
+The app is **already running for free** at:
+
+> **🔗 [https://studyhub-oe5d.onrender.com](https://studyhub-oe5d.onrender.com)**
+
+Hosted on **Render** as a Docker container — single C++14 binary, alpine-based image (~25 MB),
+serves both the REST API and the static frontend.
+
+### Deploy your own copy (one-click)
+
+The repo ships a multi-stage **Dockerfile** + a **render.yaml** blueprint:
 
 ```
-1. Push this repo to GitHub (already done).
-2. Go to https://dashboard.render.com/blueprints
-3. Click "New Blueprint Instance" → connect this repo.
+1. Fork the repo on GitHub.
+2. Sign up at https://render.com (use GitHub auth).
+3. Dashboard → "New +" → "Blueprint" → connect your fork.
 4. Render auto-reads render.yaml and creates the service.
 5. First deploy takes ~3-4 min (Docker build + push).
-6. Open https://studyhub.onrender.com (or the URL Render gives you).
+6. Open the URL Render gives you (something like studyhub-xxx.onrender.com).
 ```
 
-The container picks up the `PORT` env var Render injects, binds to `0.0.0.0`, and serves
-both the REST API and the static frontend from the same process.
+The container reads `PORT`, `HOST`, `DATA_PATH`, `STATIC_DIR` from env, so it works
+unchanged on **Fly.io**, **Railway**, **Koyeb** too — just point them at the Dockerfile.
 
-> Other free hosts that work the same way: **Fly.io**, **Railway**, **Koyeb** —
-> just point them at the Dockerfile.
+### How sleep / wake works (free tier)
+
+Render's free tier puts the container to sleep after **15 minutes of inactivity** to save
+resources. The next incoming request triggers a wake-up that takes **30-50 seconds** —
+after that, instant.
+
+> If the URL is slow to load, **just wait** — the page will load once Render has spun the
+> container back up. Refresh once after the cold-start completes; subsequent requests are
+> instant for the next 15 minutes.
+
+### Always-on via GitHub Actions
+
+This repo has a `keep-alive` workflow at [`.github/workflows/keep-alive.yml`](.github/workflows/keep-alive.yml)
+that pings `/api/health` every **14 minutes** — just under Render's 15-minute idle threshold.
+Result: the demo never sleeps. Cost: **$0** (public-repo Actions minutes are unlimited).
+
+### Manually wake the service
+
+If GitHub Actions is paused (after 60 days of repo inactivity, GitHub disables scheduled
+workflows automatically), wake the service yourself with **any** of these:
+
+| Method | How |
+|--------|-----|
+| **Just open the URL** | https://studyhub-oe5d.onrender.com — first load takes 30-50 s, then live. |
+| **`curl` from terminal** | `curl https://studyhub-oe5d.onrender.com/api/health` |
+| **GitHub Actions manual run** | Repo → Actions tab → `keep-alive` → "Run workflow" |
+| **Render dashboard** | Service page → "Manual Deploy" → "Deploy latest commit" |
+| **Push any commit to `main`** | Auto-redeploy fires (`autoDeploy: true` in render.yaml) |
 
 ### Local Docker build
 
