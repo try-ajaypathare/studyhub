@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ssaas",
+      "runtimeExecutable": "backend/build/ssaas_server.exe",
+      "runtimeArgs": [
+        "--host", "127.0.0.1",
+        "--port", "8090",
+        "--data", "backend/data/sample_data.json",
+        "--static", "frontend"
+      ],
+      "port": 8090
+    }
+  ]
+}

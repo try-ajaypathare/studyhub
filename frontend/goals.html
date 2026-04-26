@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Goals</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">My goals</h2>
+            <div class="section-meta" id="meta">— total · — on track</div>
+          </div>
+          <div class="section-actions">
+            <button class="btn btn-primary" id="btn-add">
+              <span style="display:flex;" id="add-icon"></span> New goal
+            </button>
+          </div>
+        </header>
+        <div class="grid grid-3" id="stat-grid"></div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Active goals</h2>
+          <div class="section-meta">edit current value to log progress</div>
+        </header>
+        <div class="grid grid-2" id="goal-grid"></div>
+      </section>
+
+      <footer class="app-footer">
+        <div>SSAAS · Goals · CRUD-backed by C++ Goal domain class</div>
+        <a href="index.html" class="btn btn-ghost">← Overview</a>
+      </footer>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-goals');
+    $('#add-icon').innerHTML = plusSvg();
+
+    const TYPE_ICON = {
+      'CGPA':        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>',
+      'Attendance':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+      'Study Hours': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+      'Marks':       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M5 13l4 4L19 7"/></svg>',
+      'Custom':      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>',
+    };
+
+    async function load() {
+      try {
+        const [student, goals] = await Promise.all([API.student(), API.goals()]);
+        const slot = $('#topbar-slot'); slot.innerHTML = '';
+        slot.appendChild(topbar('Goals', 'Set targets, track progress', student));
+
+        const onTrack = goals.filter(g => g.progress >= 60).length;
+        const atRisk  = goals.filter(g => g.progress < 30).length;
+        $('#meta').textContent = `${goals.length} total · ${onTrack} on track · ${atRisk} at risk`;
+
+        renderStats(goals);
+        renderGrid(goals);
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderStats(goals) {
+      const grid = $('#stat-grid');
+      grid.innerHTML = '';
+      const total = goals.length;
+      const onTrack = goals.filter(g => g.progress >= 60).length;
+      const atRisk  = goals.filter(g => g.progress < 30).length;
+      const avg = total ? goals.reduce((a, g) => a + g.progress, 0) / total : 0;
+
+      const tile = (label, value, sub, kind, icon) =>
+        el('div', { class: 'card stat hoverable' }, [
+          el('div', { class: 'stat-icon ' + kind, html: icon }),
+          el('div', { class: 'stat-label' }, label),
+          el('div', { class: 'stat-value' }, value),
+          el('div', { class: 'stat-sub' }, sub),
+        ]);
+      grid.appendChild(tile('Total goals', String(total), 'across all categories', '',
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>'));
+      grid.appendChild(tile('On track',
+        el('span', {}, [fmt.num(onTrack, 0), el('span', { class: 'unit' }, ' / ' + total)]),
+        '60% progress or more', 'pos',
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M5 13l4 4L19 7"/></svg>'));
+      grid.appendChild(tile('Average progress',
+        el('span', {}, [fmt.num(avg, 0), el('span', { class: 'unit' }, '%')]),
+        atRisk + ' at risk', atRisk > 0 ? 'cau' : 'info',
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>'));
+    }
+
+    function renderGrid(goals) {
+      const grid = $('#goal-grid');
+      grid.innerHTML = '';
+      if (!goals.length) {
+        grid.appendChild(el('div', { class: 'card empty', style: 'grid-column: 1/-1;' }, [
+          el('div', { class: 'empty-icon', html: '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" width=\"24\" height=\"24\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"12\" r=\"5\"/></svg>' }),
+          el('div', { class: 'empty-title' }, 'No goals yet'),
+          el('div', { class: 'empty-text' }, 'Set a CGPA target, attendance goal, or anything you want to track.'),
+          el('button', { class: 'btn btn-primary', onClick: openAddDialog }, 'Add your first goal'),
+        ]));
+        return;
+      }
+      goals.forEach(g => {
+        const kind = g.progress >= 80 ? 'pos'
+                   : g.progress >= 50 ? 'info'
+                   : g.progress >= 25 ? 'cau' : 'neg';
+        grid.appendChild(el('div', { class: 'card hoverable' }, [
+          el('div', { class: 'card-head' }, [
+            el('div', { class: 'flex gap-3' }, [
+              el('div', { class: 'stat-icon ' + kind, html: TYPE_ICON[g.type] || TYPE_ICON.Custom,
+                          style: 'margin: 0;' }),
+              el('div', {}, [
+                el('div', { class: 'mono', style: 'font-size: 10.5px; color: var(--fg-3); letter-spacing: 0.10em; text-transform: uppercase;' }, g.type),
+                el('h3', { class: 'card-title', style: 'margin: 2px 0 0;' }, g.title),
+              ]),
+            ]),
+            actionMenu([
+              { label: 'Update progress', icon: editSvg(), onClick: () => openProgressDialog(g) },
+              { label: 'Edit goal',       icon: editSvg(), onClick: () => openEditDialog(g) },
+              '---',
+              { label: 'Delete', icon: trashSvg(), danger: true, onClick: () => confirmDelete(g) },
+            ]),
+          ]),
+          el('div', { style: 'margin-top: var(--s-4);' }, [
+            el('div', { class: 'flex between mb-2' }, [
+              el('div', { class: 'serif', style: 'font-size: 28px; letter-spacing: -0.02em;' },
+                fmt.num(g.current, 1) + ' / ' + fmt.num(g.target, 1)),
+              el('div', { class: 'mono', style: 'color: var(--' + (kind === '' ? 'fg-2' : kind) + '); font-weight: 600;' },
+                fmt.num(g.progress, 0) + '%'),
+            ]),
+            el('div', { class: 'bar ' + kind }, [
+              el('span', { style: `width:${g.progress}%` }),
+            ]),
+          ]),
+          g.note ? el('p', { style: 'font-size: 13px; color: var(--fg-2); margin: var(--s-3) 0 0;' }, g.note) : null,
+          g.deadline
+            ? el('div', { class: 'mono', style: 'font-size: 11.5px; color: var(--fg-3); margin-top: var(--s-3);' },
+                'Deadline · ' + fmt.date(g.deadline))
+            : null,
+        ]));
+      });
+    }
+
+    function buildGoalForm(initial = {}) {
+      return buildForm([
+        { name: 'type',   label: 'Goal type', type: 'select',
+          value: (initial.type || 'CGPA').toLowerCase().replace(' ', '_'),
+          options: [
+            { value: 'cgpa',        label: 'CGPA' },
+            { value: 'attendance',  label: 'Attendance' },
+            { value: 'study_hours', label: 'Study hours' },
+            { value: 'marks',       label: 'Marks' },
+            { value: 'custom',      label: 'Custom' },
+          ] },
+        { name: 'title',    label: 'Title',    type: 'text', value: initial.title || '', required: true,
+          placeholder: 'Reach CGPA 8.5 by end of semester' },
+        { name: 'target',   label: 'Target',   type: 'number', value: initial.target ?? '', step: 0.1, required: true },
+        { name: 'current',  label: 'Current',  type: 'number', value: initial.current ?? 0, step: 0.1 },
+        { name: 'deadline', label: 'Deadline', type: 'date',   value: initial.deadline || '' },
+        { name: 'note',     label: 'Note',     type: 'textarea', value: initial.note || '' },
+      ], 'grid');
+    }
+
+    function openAddDialog() {
+      const form = buildGoalForm();
+      Modal.open({
+        title: 'New goal',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Create goal'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.addGoal(d);
+          Modal.close();
+          toast('Goal created', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    function openEditDialog(g) {
+      const form = buildGoalForm(g);
+      Modal.open({
+        title: 'Edit goal',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Save'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.updateGoal(g.id, d);
+          Modal.close();
+          toast('Saved', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    function openProgressDialog(g) {
+      const form = buildForm([
+        { name: 'current', label: `Current value (target ${g.target})`, type: 'number',
+          value: g.current, step: 0.1, required: true },
+      ]);
+      Modal.open({
+        title: 'Log progress',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Update'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.updateGoal(g.id, { ...g,
+            type: g.type.toLowerCase().replace(' ', '_'),
+            current: d.current });
+          Modal.close();
+          toast('Progress logged', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    async function confirmDelete(g) {
+      const ok = await Confirm(`Delete "${g.title}"?`);
+      if (!ok) return;
+      try {
+        await API.deleteGoal(g.id);
+        toast('Deleted', 'pos');
+        load();
+      } catch (err) { toast(err.message, 'neg'); }
+    }
+
+    $('#btn-add').addEventListener('click', openAddDialog);
+
+    load();
+  </script>
+</body>
+</html>

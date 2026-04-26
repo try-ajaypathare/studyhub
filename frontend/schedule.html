@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Schedule</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <div class="grid grid-side fade-in">
+        <div>
+          <section class="section" style="margin-top: 0;">
+            <header class="section-header">
+              <div>
+                <h2 class="section-title">Calendar</h2>
+                <div class="section-meta">all exams · events · deadlines</div>
+              </div>
+            </header>
+            <div class="cal" id="cal"></div>
+          </section>
+
+          <section class="section">
+            <header class="section-header">
+              <h2 class="section-title">Selected day</h2>
+              <div class="section-meta" id="selected-day-meta">Click any date</div>
+            </header>
+            <div class="card tight" id="day-list">
+              <div class="muted center" style="padding: 24px 0;">Pick a date to see events.</div>
+            </div>
+          </section>
+        </div>
+
+        <aside>
+          <section class="section" style="margin-top: 0;">
+            <header class="section-header">
+              <h2 class="section-title" style="font-size: 17px;">This week</h2>
+              <div class="section-meta" id="week-meta">—</div>
+            </header>
+            <div class="card tight" id="week-list"></div>
+          </section>
+
+          <section class="section">
+            <header class="section-header">
+              <h2 class="section-title" style="font-size: 17px;">Legend</h2>
+            </header>
+            <div class="card tight">
+              <div class="flex gap-2 mt-2"><span class="tag neg"><span class="dot"></span>Exam</span></div>
+              <div class="flex gap-2 mt-2"><span class="tag cau"><span class="dot"></span>Event</span></div>
+              <div class="flex gap-2 mt-2"><span class="tag info"><span class="dot"></span>Competition deadline</span></div>
+              <div class="flex gap-2 mt-2"><span class="tag acc"><span class="dot"></span>Today</span></div>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="app-footer">
+        <div>SSAAS · Schedule · unified calendar across exams · events · competitions</div>
+        <a href="index.html" class="btn btn-ghost">← Overview</a>
+      </footer>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-schedule');
+
+    let allItems = []; // unified [{date, title, kind, meta, color}]
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let viewMonth = today.getMonth();
+    let viewYear  = today.getFullYear();
+    let selected  = today.toISOString().slice(0, 10);
+
+    async function load() {
+      try {
+        const [student, exams, events, comps] = await Promise.all([
+          API.student(), API.exams(), API.events(), API.competitions()
+        ]);
+        const slot = $('#topbar-slot'); slot.innerHTML = '';
+        slot.appendChild(topbar('Schedule', 'Unified calendar of academic life', student));
+
+        allItems = [
+          ...exams.map(e => ({ date: e.date, title: e.subject + ' ' + e.type, kind: 'exam',
+                               meta: `${e.time || 'TBA'} · ${e.venue || ''}`.trim() })),
+          ...events.map(e => ({ date: e.date, title: e.title, kind: 'event',
+                                meta: `${e.type} · ${e.location || 'TBA'}` })),
+          ...comps.map(c => ({ date: c.deadline, title: c.title + ' deadline', kind: 'comp',
+                               meta: `${c.category} · ${c.organizer}` })),
+        ];
+
+        renderCalendar();
+        renderWeek();
+        renderDay(selected);
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderCalendar() {
+      const monthNames = ['January','February','March','April','May','June',
+                          'July','August','September','October','November','December'];
+      const dows = ['S','M','T','W','T','F','S'];
+
+      const first = new Date(viewYear, viewMonth, 1);
+      const startDow = first.getDay();
+      const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+      const daysInPrev  = new Date(viewYear, viewMonth, 0).getDate();
+
+      const cells = [];
+      for (let i = 0; i < startDow; i++)
+        cells.push({ day: daysInPrev - startDow + i + 1, muted: true,
+                     iso: new Date(viewYear, viewMonth - 1, daysInPrev - startDow + i + 1).toISOString().slice(0, 10) });
+      for (let d = 1; d <= daysInMonth; d++)
+        cells.push({ day: d, iso: new Date(viewYear, viewMonth, d).toISOString().slice(0, 10) });
+      while (cells.length % 7 !== 0)
+        cells.push({ day: cells.length - daysInMonth - startDow + 1, muted: true,
+                     iso: new Date(viewYear, viewMonth + 1, cells.length - daysInMonth - startDow + 1).toISOString().slice(0, 10) });
+
+      const wrap = $('#cal');
+      wrap.innerHTML = '';
+      const head = el('div', { class: 'cal-head' }, [
+        el('div', { class: 'flex gap-2' }, [
+          el('button', { class: 'btn-icon', onClick: () => prevMonth(),
+                         html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" width="14" height="14"><path d="M15 18l-6-6 6-6"/></svg>' }),
+          el('button', { class: 'btn-icon', onClick: () => nextMonth(),
+                         html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" width="14" height="14"><path d="M9 6l6 6-6 6"/></svg>' }),
+        ]),
+        el('div', { class: 'cal-title' }, `${monthNames[viewMonth]} ${viewYear}`),
+        el('button', { class: 'btn small', onClick: () => goToday() }, 'Today'),
+      ]);
+      wrap.appendChild(head);
+
+      const grid = el('div', { class: 'cal-grid' });
+      dows.forEach(d => grid.appendChild(el('div', { class: 'cal-dow' }, d)));
+      cells.forEach(c => {
+        const items = allItems.filter(it => it.date === c.iso);
+        const isToday = c.iso === today.toISOString().slice(0, 10) && !c.muted;
+        const isSelected = c.iso === selected && !c.muted;
+        const cls = ['cal-cell'];
+        if (c.muted) cls.push('muted');
+        if (isToday) cls.push('today');
+        if (items.some(i => i.kind === 'exam'))   cls.push('has-exam');
+        else if (items.length)                     cls.push('has-event');
+        const cell = el('div', {
+          class: cls.join(' '),
+          style: isSelected && !isToday ? 'box-shadow: inset 0 0 0 2px var(--primary);' : '',
+          onClick: () => { selected = c.iso; renderCalendar(); renderDay(selected); },
+        }, String(c.day));
+        grid.appendChild(cell);
+      });
+      wrap.appendChild(grid);
+    }
+
+    function renderDay(iso) {
+      const list = $('#day-list');
+      list.innerHTML = '';
+      const items = allItems.filter(it => it.date === iso);
+
+      const dateLabel = new Date(iso).toLocaleDateString(undefined,
+        { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+      $('#selected-day-meta').textContent = dateLabel;
+
+      if (!items.length) {
+        list.appendChild(el('div', { class: 'muted center', style: 'padding: 16px 0;' },
+          'Nothing scheduled.'));
+        return;
+      }
+      items.forEach(it => {
+        const kindClass = it.kind === 'exam' ? 'neg' :
+                          it.kind === 'comp' ? 'info' : 'cau';
+        list.appendChild(el('div', { class: 'schedule-item' }, [
+          el('div', { style: 'flex: none;' }, [
+            el('span', { class: 'chip ' + kindClass },
+              it.kind === 'exam' ? 'Exam' :
+              it.kind === 'comp' ? 'Deadline' : 'Event'),
+          ]),
+          el('div', { class: 'schedule-body' }, [
+            el('div', { class: 'schedule-title' }, it.title),
+            el('div', { class: 'schedule-meta' }, it.meta),
+          ]),
+        ]));
+      });
+    }
+
+    function renderWeek() {
+      const list = $('#week-list');
+      list.innerHTML = '';
+      const start = new Date(today);
+      const end   = new Date(today);
+      end.setDate(end.getDate() + 7);
+
+      const inWeek = allItems.filter(it => {
+        const d = new Date(it.date);
+        return d >= start && d <= end;
+      }).sort((a, b) => a.date.localeCompare(b.date));
+
+      $('#week-meta').textContent = `${inWeek.length} item${inWeek.length === 1 ? '' : 's'}`;
+
+      if (!inWeek.length) {
+        list.appendChild(el('div', { class: 'muted center', style: 'padding: 12px 0; font-size: 13px;' },
+          'Nothing this week.'));
+        return;
+      }
+      inWeek.forEach(it => {
+        const days = Math.round((new Date(it.date) - today) / (1000 * 60 * 60 * 24));
+        const kindClass = it.kind === 'exam' ? 'neg' :
+                          it.kind === 'comp' ? 'info' : 'cau';
+        list.appendChild(el('div', { class: 'schedule-item' }, [
+          el('div', { class: 'schedule-time' }, [
+            el('div', { style: 'font-weight: 600;' }, days === 0 ? 'today' : days + 'd'),
+          ]),
+          el('div', { class: 'schedule-body' }, [
+            el('div', { class: 'schedule-title' }, it.title),
+            el('div', { class: 'schedule-meta' }, [
+              el('span', { class: 'chip ' + kindClass },
+                it.kind === 'exam' ? 'Exam' : it.kind === 'comp' ? 'Deadline' : 'Event'),
+              ' ', it.meta,
+            ]),
+          ]),
+        ]));
+      });
+    }
+
+    function prevMonth() {
+      viewMonth--;
+      if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+      renderCalendar();
+    }
+    function nextMonth() {
+      viewMonth++;
+      if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+      renderCalendar();
+    }
+    function goToday() {
+      viewMonth = today.getMonth();
+      viewYear  = today.getFullYear();
+      selected  = today.toISOString().slice(0, 10);
+      renderCalendar();
+      renderDay(selected);
+    }
+
+    load();
+  </script>
+</body>
+</html>

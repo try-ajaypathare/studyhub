@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Marks &amp; Predictions</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Performance summary</h2>
+            <div class="section-meta">analyzers · gradePredictor + performanceDrop</div>
+          </div>
+          <div class="section-actions">
+            <button class="btn btn-primary" id="btn-add"><span style="display:flex;" id="add-icon"></span> Add assessment</button>
+          </div>
+        </header>
+        <div class="grid grid-3">
+          <div class="card stat">
+            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg></div>
+            <div class="stat-label">Credit-weighted avg</div>
+            <div class="stat-value" id="cw-avg"><span class="skeleton" style="width:80px;"></span></div>
+            <div class="stat-sub">across all subjects</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-icon info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+            <div class="stat-label">Predicted next</div>
+            <div class="stat-value" id="pred-avg"><span class="skeleton" style="width:80px;"></span></div>
+            <div class="stat-sub">OLS regression on history</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-icon cau"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M12 2L2 22h20L12 2z"/><path d="M12 9v6"/></svg></div>
+            <div class="stat-label">Subjects with drop</div>
+            <div class="stat-value" id="drop-count">—</div>
+            <div class="stat-sub">latest fell more than 8 pts</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Per-subject trajectory</h2>
+          <div class="section-meta">solid · actuals  ·  dotted · predicted next</div>
+        </header>
+        <div class="card">
+          <p class="card-meta">
+            Linear regression fitted on chronological assessments.
+            The dotted segment is the predicted next attempt with a residual-derived confidence band.
+          </p>
+          <div class="chart-wrap tall"><canvas id="trajectory"></canvas></div>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Drop detection &amp; targets</h2>
+          <div class="section-meta">delta · R² · required-in-finals</div>
+        </header>
+        <div class="card tight">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Subject</th><th>Latest</th><th>Historical</th><th>Δ</th>
+                <th>Predicted</th><th>R²</th><th>Required</th>
+              </tr>
+            </thead>
+            <tbody id="perf-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">All assessments</h2>
+          <div class="section-meta">most recent first · click to edit</div>
+        </header>
+        <div class="card tight">
+          <table class="table">
+            <thead>
+              <tr><th>Date</th><th>Subject</th><th>Type</th><th>Title</th><th>Score</th><th>%</th><th class="right">Actions</th></tr>
+            </thead>
+            <tbody id="marks-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="app-footer">
+        <div>SSAAS · Marks · OLS regression in pure C++14</div>
+        <a href="index.html" class="btn btn-ghost">← Overview</a>
+      </footer>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/charts.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-marks');
+    $('#add-icon').innerHTML = plusSvg();
+
+    let trajChart = null;
+    let cachedSubjects = [];
+
+    async function load() {
+      try {
+        const [student, predict, perf, marks, subjects] = await Promise.all([
+          API.student(), API.predict(), API.performance(), API.marks(), API.subjects()
+        ]);
+        cachedSubjects = subjects;
+        const slot = $('#topbar-slot'); slot.innerHTML = '';
+        slot.appendChild(topbar('Marks & predictions',
+          'Linear-regression-driven academic forecasting', student));
+
+        $('#cw-avg').innerHTML   = `${fmt.num(student.creditWeightedAverage)}<span class="unit">%</span>`;
+        $('#pred-avg').innerHTML = `${fmt.num(predict.overallPredictedAverage)}<span class="unit">%</span>`;
+        $('#drop-count').textContent = perf.dropCount;
+
+        renderTrajectory(predict);
+        renderPerfTable(predict, perf);
+        renderMarksTable(marks);
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderTrajectory(predict) {
+      const datasets = [];
+      let maxX = 1;
+      predict.subjects.forEach(s => {
+        const color = codeAccent(s.code);
+        const xs = s.history.map((_, i) => i + 1);
+        maxX = Math.max(maxX, xs.length + 1);
+        datasets.push({
+          label: s.code,
+          data: s.history.map((y, j) => ({ x: j + 1, y })),
+          borderColor: color,
+          backgroundColor: color + '15',
+          borderWidth: 1.8,
+          tension: 0.25,
+          pointRadius: 4,
+          pointBackgroundColor: color,
+          pointBorderColor: '#fff',
+          pointBorderWidth: 1.5,
+        });
+        datasets.push({
+          label: s.code + ' (predicted)',
+          data: [
+            { x: s.history.length,     y: s.history[s.history.length - 1] },
+            { x: s.history.length + 1, y: s.prediction },
+          ],
+          borderColor: color,
+          borderDash: [4, 3],
+          borderWidth: 1.4,
+          pointStyle: 'rectRot',
+          pointRadius: 5,
+          pointBorderColor: color,
+          pointBackgroundColor: '#fff',
+          showLine: true,
+        });
+      });
+
+      if (trajChart) trajChart.destroy();
+      trajChart = makeLineChart($('#trajectory'), datasets,
+        { xMin: 1, xMax: maxX, xTitle: 'Assessment #', yTitle: 'Score (%)' });
+      trajChart.options.plugins.legend.labels.filter =
+        (item) => !item.text.includes('predicted');
+      trajChart.update();
+    }
+
+    function renderPerfTable(predict, perf) {
+      const tbody = $('#perf-table');
+      tbody.innerHTML = '';
+      predict.subjects.forEach(p => {
+        const drop = (perf.subjects || []).find(x => x.code === p.code) || {};
+        const need = p.requiredInFinals;
+        let needCell;
+        if (need < 0)        needCell = el('span', { class: 'chip pos' }, 'no extra needed');
+        else if (need > 100) needCell = el('span', { class: 'chip neg' }, 'unreachable');
+        else if (need > 80)  needCell = el('span', { class: 'chip cau' }, fmt.pct(need));
+        else                 needCell = el('span', { class: 'chip' }, fmt.pct(need));
+
+        tbody.appendChild(el('tr', {}, [
+          el('td', { class: 'name' }, [
+            p.name,
+            el('div', { class: 'meta' }, p.code),
+          ]),
+          el('td', { class: 'mono' },
+            fmt.pct(drop.latestPercent ?? p.history?.[p.history.length-1])),
+          el('td', { class: 'mono' },
+            fmt.pct(drop.historicalAvg ?? p.currentAverage)),
+          el('td', {}, [
+            el('span', { class: 'chip ' + ((drop.delta ?? 0) < 0 ? 'neg' : 'pos') },
+              fmt.signed(drop.delta ?? 0) + ' pts'),
+          ]),
+          el('td', { class: 'mono' }, [
+            fmt.pct(p.prediction),
+            el('div', { class: 'dim', style: 'font-size:11px;' },
+              `${fmt.pct(p.confidenceLo)} – ${fmt.pct(p.confidenceHi)}`),
+          ]),
+          el('td', { class: 'mono' }, fmt.num(p.rSquared, 2)),
+          el('td', {}, needCell),
+        ]));
+      });
+    }
+
+    function renderMarksTable(marks) {
+      const tbody = $('#marks-table');
+      tbody.innerHTML = '';
+      marks.sort((a, b) => b.date.localeCompare(a.date));
+      marks.forEach(m => {
+        const kind = m.percent >= 80 ? 'pos' : m.percent >= 60 ? '' : m.percent >= 45 ? 'cau' : 'neg';
+        tbody.appendChild(el('tr', {}, [
+          el('td', { class: 'mono' }, m.date),
+          el('td', { class: 'mono' }, m.subject),
+          el('td', {}, [ el('span', { class: 'chip' }, m.type) ]),
+          el('td', {}, m.title || '—'),
+          el('td', { class: 'mono' }, `${m.obtained} / ${m.max}`),
+          el('td', {}, [
+            el('span', { class: 'chip ' + kind }, fmt.pct(m.percent)),
+          ]),
+          el('td', { class: 'right' }, [
+            el('div', { class: 'row-actions' }, [
+              actionMenu([
+                { label: 'Edit',   icon: editSvg(),  onClick: () => openEditDialog(m) },
+                { label: 'Delete', icon: trashSvg(), danger: true, onClick: () => confirmDelete(m) },
+              ]),
+            ]),
+          ]),
+        ]));
+      });
+    }
+
+    function buildMarksForm(initial = {}) {
+      return buildForm([
+        { name: 'subject', label: 'Subject', type: 'select', required: true,
+          value: initial.subject || cachedSubjects[0]?.code,
+          options: cachedSubjects.map(s => ({ value: s.code, label: `${s.code} — ${s.name}` })) },
+        { name: 'type', label: 'Assessment type', type: 'select',
+          value: (initial.type || 'quiz').toLowerCase().replace(' ', ''),
+          options: [
+            { value: 'quiz',       label: 'Quiz' },
+            { value: 'assignment', label: 'Assignment' },
+            { value: 'midterm',    label: 'Mid Term' },
+            { value: 'endterm',    label: 'End Term' },
+            { value: 'project',    label: 'Project' },
+            { value: 'practical',  label: 'Practical' },
+          ] },
+        { name: 'title',    label: 'Title',          type: 'text', value: initial.title || '', placeholder: 'e.g. Quiz 3' },
+        { name: 'obtained', label: 'Marks obtained', type: 'number', value: initial.obtained ?? '', min: 0, required: true },
+        { name: 'max',      label: 'Max marks',      type: 'number', value: initial.max ?? 25, min: 1, required: true },
+        { name: 'date',     label: 'Date',           type: 'date', value: initial.date || fmt.todayISO(), required: true },
+      ], 'grid');
+    }
+
+    function openAddDialog() {
+      if (!cachedSubjects.length) { toast('Add a subject first', 'cau'); return; }
+      const form = buildMarksForm();
+      Modal.open({
+        title: 'Add assessment',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Add'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.addMarks(d);
+          Modal.close();
+          toast('Assessment added', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    function openEditDialog(m) {
+      const form = buildMarksForm(m);
+      Modal.open({
+        title: 'Edit assessment',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Save'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.updateMarks(m.id, d);
+          Modal.close();
+          toast('Saved', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    async function confirmDelete(m) {
+      const ok = await Confirm(`Delete ${m.title || m.type} (${m.subject})?`);
+      if (!ok) return;
+      try {
+        await API.deleteMarks(m.id);
+        toast('Deleted', 'pos');
+        load();
+      } catch (err) { toast(err.message, 'neg'); }
+    }
+
+    $('#btn-add').addEventListener('click', openAddDialog);
+
+    load();
+  </script>
+</body>
+</html>

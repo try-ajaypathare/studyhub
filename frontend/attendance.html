@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Attendance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Attendance summary</h2>
+            <div class="section-meta">analyzers · attendanceRisk + bunkPredictor</div>
+          </div>
+          <div class="section-actions">
+            <button class="btn" id="btn-mark"><span style="display:flex;" id="mark-icon"></span> Mark today</button>
+          </div>
+        </header>
+        <div class="grid grid-3">
+          <div class="card stat">
+            <div class="stat-icon" id="ic1"></div>
+            <div class="stat-label">Overall</div>
+            <div class="stat-value" id="overall-pct"><span class="skeleton" style="width:80px;"></span></div>
+            <div class="stat-sub" id="overall-detail">— of — lectures attended</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-icon pos" id="ic2"></div>
+            <div class="stat-label">Subjects safe</div>
+            <div class="stat-value" id="safe-count">—</div>
+            <div class="stat-sub">at or above 80%</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-label">Critical</div>
+            <div class="stat-icon neg" id="ic3"></div>
+            <div class="stat-value" id="critical-count">—</div>
+            <div class="stat-sub">below 70% — needs recovery</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Safe-bunk predictor</h2>
+          <div class="section-meta">solves attended ÷ (total + b) ≥ 0.75</div>
+        </header>
+        <div class="card tight">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Subject</th>
+                <th>Attendance</th>
+                <th>Status</th>
+                <th>Safe bunks</th>
+                <th>Recovery</th>
+                <th class="right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="bunk-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Risk &amp; trend</h2>
+          <div class="section-meta">10-lecture trailing window</div>
+        </header>
+        <div class="grid grid-2">
+          <div class="card">
+            <h3 class="card-title">Risk distribution</h3>
+            <p class="card-meta">Per-subject classification across the cohort.</p>
+            <div class="chart-wrap"><canvas id="risk-doughnut"></canvas></div>
+          </div>
+          <div class="card">
+            <h3 class="card-title">Recent vs overall</h3>
+            <p class="card-meta">Bars show the 10-lecture trailing rate against the cumulative %.</p>
+            <div class="chart-wrap"><canvas id="trend-bar"></canvas></div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="app-footer">
+        <div>SSAAS · Attendance · Strategy + Observer pattern</div>
+        <a href="index.html" class="btn btn-ghost">← Overview</a>
+      </footer>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/charts.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-attendance');
+    $('#mark-icon').innerHTML = plusSvg();
+    $('#ic1').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>';
+    $('#ic2').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M5 13l4 4L19 7"/></svg>';
+    $('#ic3').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="9"/><path d="M12 7v5M12 16v.01"/></svg>';
+
+    let riskChart = null, trendChart = null;
+    let cachedSubjects = [];
+
+    async function load() {
+      try {
+        const [student, bunk, risk, subjects] = await Promise.all([
+          API.student(), API.bunk(), API.risk(), API.subjects()
+        ]);
+        cachedSubjects = subjects;
+
+        const slot = $('#topbar-slot'); slot.innerHTML = '';
+        slot.appendChild(topbar('Attendance',
+          'Risk classification + safe-bunk predictor', student));
+
+        $('#overall-pct').innerHTML = `${fmt.num(bunk.overall.percentage)}<span class="unit">%</span>`;
+        $('#overall-detail').textContent =
+          `${bunk.overall.attended} of ${bunk.overall.total} lectures attended`;
+        $('#safe-count').textContent     = risk.counts.safe;
+        $('#critical-count').textContent = risk.counts.critical;
+
+        renderBunkTable(bunk);
+        renderRiskDoughnut(risk);
+        renderTrend(risk);
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderBunkTable(bunk) {
+      const tbody = $('#bunk-table');
+      tbody.innerHTML = '';
+      bunk.subjects.forEach(s => {
+        const above = s.aboveTarget;
+        tbody.appendChild(el('tr', {}, [
+          el('td', { class: 'name' }, [
+            s.name,
+            el('div', { class: 'meta' }, `${s.attended}/${s.total} · ${s.code}`),
+          ]),
+          el('td', { class: 'mono' }, fmt.pct(s.percentage)),
+          el('td', {}, [
+            el('span', { class: 'chip ' + (above ? 'pos' : 'neg') },
+              above ? 'above target' : 'below target'),
+          ]),
+          el('td', { class: 'mono' },
+            s.safeBunks > 0 ? `${s.safeBunks} class${s.safeBunks > 1 ? 'es' : ''}` : '—'),
+          el('td', { class: 'muted', style:'font-size: 12.5px;' }, s.message),
+          el('td', { class: 'right' }, [
+            el('div', { class: 'row-actions' }, [
+              el('button', { class: 'btn small', onClick: () => quickMark(s.code, true) }, 'Present'),
+              el('button', { class: 'btn small', onClick: () => quickMark(s.code, false) }, 'Absent'),
+              actionMenu([
+                { label: 'Edit counters', icon: editSvg(),
+                  onClick: () => openEditAttendance(s) },
+              ]),
+            ]),
+          ]),
+        ]));
+      });
+    }
+
+    async function quickMark(code, present) {
+      try {
+        const r = await API.markAttendance(code, present);
+        toast(`${code} → ${r.newPercentage.toFixed(1)}%`, present ? 'pos' : 'cau');
+        load();
+      } catch (err) { toast(err.message, 'neg'); }
+    }
+
+    function openEditAttendance(s) {
+      const sub = cachedSubjects.find(x => x.code === s.code) || {};
+      const form = buildForm([
+        { name: 'total',    label: 'Total lectures',    type: 'number', value: s.total,    min: 0, required: true },
+        { name: 'attended', label: 'Attended lectures', type: 'number', value: s.attended, min: 0, required: true },
+      ], 'grid');
+      Modal.open({
+        title: `Attendance · ${s.code}`,
+        body: [
+          el('div', { class: 'note' },
+            'Set the canonical attendance counters. Useful for catching up after manual entry.'),
+          form,
+        ],
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Save'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.setAttendance(s.code, d.total, d.attended);
+          Modal.close();
+          toast('Saved', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    function openMarkDialog() {
+      const sel = selectField('subject', '', cachedSubjects.map(s => ({
+        value: s.code, label: `${s.code} — ${s.name}`
+      })));
+      const status = selectField('present', 'true', [
+        { value: 'true',  label: 'Present' },
+        { value: 'false', label: 'Absent' },
+      ]);
+      const form = el('form', {}, [
+        field('subject', 'Subject', sel),
+        field('present', 'Status',  status),
+      ]);
+      Modal.open({
+        title: 'Mark today\'s class',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Record'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          const r = await API.markAttendance(d.subject, d.present === 'true' || d.present === true);
+          Modal.close();
+          toast(`${d.subject} → ${r.newPercentage.toFixed(1)}%`, 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    function renderRiskDoughnut(risk) {
+      if (riskChart) riskChart.destroy();
+      riskChart = makeDoughnut($('#risk-doughnut'),
+        ['Safe', 'Warning', 'Critical'],
+        [risk.counts.safe, risk.counts.warning, risk.counts.critical],
+        ['#059669', '#d97706', '#dc2626']);
+    }
+
+    function renderTrend(risk) {
+      const labels = risk.subjects.map(s => s.code);
+      const overall = risk.subjects.map(s => +s.percentage.toFixed(1));
+      const recent  = risk.subjects.map(s => +s.recentRate.toFixed(1));
+      if (trendChart) trendChart.destroy();
+      trendChart = makePairedBarChart($('#trend-bar'), labels, [
+        { label: 'Cumulative', data: overall },
+        { label: 'Recent (10)', data: recent  },
+      ]);
+    }
+
+    $('#btn-mark').addEventListener('click', openMarkDialog);
+
+    load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Overview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <!-- Hero welcome -->
+      <div id="hero-slot" class="fade-in"></div>
+
+      <!-- Stats grid + side panel layout -->
+      <div class="grid grid-side fade-in" style="margin-top: var(--s-5);">
+        <div>
+          <section class="section" style="margin-top: 0;">
+            <header class="section-header">
+              <h2 class="section-title">Today at a glance</h2>
+              <div class="section-meta" id="now-meta">—</div>
+            </header>
+            <div class="grid grid-4" id="stats-grid"></div>
+          </section>
+
+          <section class="section">
+            <header class="section-header">
+              <h2 class="section-title">Health &amp; risk profile</h2>
+              <a href="analytics.html" class="btn btn-ghost small">View analytics →</a>
+            </header>
+            <div class="grid grid-2">
+              <div class="card">
+                <h3 class="card-title">Academic health</h3>
+                <p class="card-meta">Weighted blend of attendance and credit-weighted performance.</p>
+                <div class="gauge-card">
+                  <div class="gauge-wrap">
+                    <svg class="gauge-svg" viewBox="0 0 120 120">
+                      <circle class="gauge-bg"   cx="60" cy="60" r="50"></circle>
+                      <circle class="gauge-fill" id="gauge-fill" cx="60" cy="60" r="50"
+                              stroke-dasharray="314" stroke-dashoffset="314"></circle>
+                    </svg>
+                    <div class="gauge-content">
+                      <div>
+                        <div class="gauge-score" id="gauge-score">—</div>
+                        <div class="gauge-status" id="gauge-status">loading</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="flex: 1; min-width: 0;">
+                    <div class="metric-row">
+                      <div class="metric-row-name">Attendance<div class="meta">target 75%</div></div>
+                      <div class="bar"><span id="bar-att" style="width:0%"></span></div>
+                      <div class="metric-row-value" id="health-att">—</div>
+                    </div>
+                    <div class="metric-row">
+                      <div class="metric-row-name">Performance<div class="meta">credit-weighted</div></div>
+                      <div class="bar pos"><span id="bar-perf" style="width:0%"></span></div>
+                      <div class="metric-row-value" id="health-perf">—</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-head">
+                  <div>
+                    <h3 class="card-title">Bayesian risk</h3>
+                    <p class="card-meta">Naive-Bayes posterior over 5 indicators.</p>
+                  </div>
+                  <div class="right">
+                    <div class="serif" id="bayes-posterior" style="font-size: 32px; letter-spacing:-0.025em;">—</div>
+                    <div class="chip" id="bayes-band">—</div>
+                  </div>
+                </div>
+                <div id="bayes-indicators"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <header class="section-header">
+              <h2 class="section-title">Smart study plan</h2>
+              <div class="section-meta">priority = weakness × proximity × drag</div>
+            </header>
+            <div class="card">
+              <div class="session-grid" id="study-sessions"></div>
+            </div>
+          </section>
+
+          <section class="section">
+            <header class="section-header">
+              <h2 class="section-title">Subject snapshot</h2>
+              <a href="subjects.html" class="btn btn-ghost small">Manage subjects →</a>
+            </header>
+            <div class="card tight">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Subject</th>
+                    <th>Attendance</th>
+                    <th>Average</th>
+                    <th>Predicted</th>
+                    <th>Trend</th>
+                    <th>Risk</th>
+                  </tr>
+                </thead>
+                <tbody id="subject-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- Right side panel -->
+        <aside>
+          <section class="section" style="margin-top: 0;">
+            <header class="section-header">
+              <h2 class="section-title" style="font-size:17px;">Live alerts</h2>
+              <a href="#" class="btn btn-ghost small">All</a>
+            </header>
+            <div class="alert-list" id="alert-list"></div>
+          </section>
+
+          <section class="section">
+            <header class="section-header">
+              <h2 class="section-title" style="font-size:17px;">Upcoming exams</h2>
+              <a href="exams.html" class="btn btn-ghost small">View all →</a>
+            </header>
+            <div class="card tight">
+              <div id="upcoming-exams"></div>
+            </div>
+          </section>
+
+          <section class="section">
+            <header class="section-header">
+              <h2 class="section-title" style="font-size:17px;">Goals</h2>
+              <a href="goals.html" class="btn btn-ghost small">Manage →</a>
+            </header>
+            <div class="card tight" id="goals-card"></div>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="app-footer">
+        <div class="flex gap-3" style="flex-wrap: wrap;">
+          <span>SSAAS · v1.1</span><span>·</span>
+          <span>C++14 backend</span><span>·</span>
+          <span>Strategy · Observer · Singleton · Factory · Repository</span>
+        </div>
+        <div>built with care</div>
+      </footer>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-overview');
+
+    $('#now-meta').textContent = new Date().toLocaleDateString(undefined,
+      { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+
+    async function load() {
+      try {
+        const data = await API.dashboard();
+        renderTopbar(data.student);
+        renderHero(data.student);
+        renderStats(data);
+        renderHealthGauge(data.health);
+        renderBayesian(data.bayes);
+        renderStudyPlan(data.studyPlan);
+        renderAlerts(data.alerts);
+        renderUpcomingExams(data.exams);
+        renderSubjectTable(data);
+        renderGoals(data.goals);
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderTopbar(student) {
+      const slot = $('#topbar-slot');
+      slot.innerHTML = '';
+      slot.appendChild(topbar('Overview',
+        `Welcome back, ${student.name.split(' ')[0]}`,
+        student));
+    }
+
+    function renderHero(student) {
+      const today = new Date().toLocaleDateString(undefined,
+        { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+      const slot = $('#hero-slot');
+      slot.innerHTML = '';
+      slot.appendChild(el('div', { class: 'hero' }, [
+        el('div', { class: 'hero-date' }, today),
+        el('h2', {}, `Welcome back, ${student.name.split(' ')[0]}`),
+        el('p',  {}, `${student.program} · Semester ${student.semester} · always stay updated in your student portal.`),
+      ]));
+    }
+
+    function statTile(label, value, sub, icon, kind = '') {
+      return el('div', { class: 'card stat hoverable' }, [
+        el('div', { class: 'stat-icon ' + kind, html: icon }),
+        el('div', { class: 'stat-label' }, label),
+        el('div', { class: 'stat-value', html: value }),
+        el('div', { class: 'stat-sub' }, sub),
+      ]);
+    }
+
+    function renderStats(d) {
+      const wrap = $('#stats-grid');
+      wrap.innerHTML = '';
+      wrap.appendChild(statTile('Attendance',
+        `${fmt.num(d.student.overallAttendance)}<span class="unit">%</span>`,
+        'overall · target 75%', iconBookSmall(), ''));
+      wrap.appendChild(statTile('Performance',
+        `${fmt.num(d.student.creditWeightedAverage)}<span class="unit">%</span>`,
+        'credit-weighted average', iconTrendSmall(), 'pos'));
+      wrap.appendChild(statTile('Health index',
+        `${fmt.num(d.health.score, 0)}<span class="unit">/100</span>`,
+        d.health.status.toLowerCase(), iconHeartSmall(), 'info'));
+      wrap.appendChild(statTile('Active alerts',
+        `${d.alerts.counts.critical + d.alerts.counts.warning}`,
+        `${d.alerts.counts.critical} critical · ${d.alerts.counts.warning} warning`,
+        iconBellSmall(),
+        d.alerts.counts.critical > 0 ? 'neg' : 'cau'));
+    }
+
+    function renderHealthGauge(h) {
+      const radius = 50, circ = 2 * Math.PI * radius;
+      const offset = circ * (1 - h.score / 100);
+      const fill = $('#gauge-fill');
+      fill.setAttribute('stroke-dasharray', circ.toFixed(2));
+      fill.setAttribute('stroke-dashoffset', offset.toFixed(2));
+      $('#gauge-score').textContent  = fmt.num(h.score, 0);
+      $('#gauge-status').textContent = h.status;
+      $('#health-att').textContent  = fmt.pct(h.attendance);
+      $('#health-perf').textContent = fmt.pct(h.performance);
+      $('#bar-att').style.width  = Math.max(0, Math.min(100, h.attendance))  + '%';
+      $('#bar-perf').style.width = Math.max(0, Math.min(100, h.performance)) + '%';
+    }
+
+    function renderBayesian(b) {
+      $('#bayes-posterior').textContent = fmt.num(b.riskScore, 0) + '%';
+      const band = $('#bayes-band');
+      band.textContent = b.band;
+      band.className = 'chip ' + (
+        b.band === 'Critical' || b.band === 'High' ? 'neg'
+        : b.band === 'Moderate' ? 'cau' : 'pos');
+
+      const wrap = $('#bayes-indicators');
+      wrap.innerHTML = '';
+      b.indicators.forEach(i => {
+        wrap.appendChild(el('div', { class: 'metric-row' }, [
+          el('div', { class: 'metric-row-name' }, [
+            i.name.replace(/_/g, ' '),
+            el('div', { class: 'meta' },
+              i.active
+                ? `LR ${i.likelihoodRatio.toFixed(2)}× · strength ${(i.strength*100).toFixed(0)}%`
+                : 'no signal'),
+          ]),
+          el('div', { class: 'bar ' + (i.active ? 'cau' : '') }, [
+            el('span', { style: `width:${i.active ? (i.strength*100).toFixed(0) : 0}%` }),
+          ]),
+          el('div', { class: 'metric-row-value' },
+            i.active ? '' : el('span', { class: 'dim' }, 'idle'),
+          ),
+        ]));
+      });
+    }
+
+    function renderStudyPlan(plan) {
+      const grid = $('#study-sessions');
+      grid.innerHTML = '';
+      plan.sessions.forEach(s => {
+        grid.appendChild(el('div', { class: 'session' }, [
+          el('div', { class: 'session-time' }, s.slot + ' · ' + s.time),
+          el('div', { class: 'session-name' }, s.subjects[0]?.name || 'Open block'),
+          el('div', { class: 'session-goal' }, s.goal),
+          el('div', { class: 'session-subjects' },
+            s.subjects.map(sub => el('div', { class: 'subject' }, [
+              el('span', {}, sub.code),
+              el('span', { class: 'priority' },
+                'p' + sub.priority.toFixed(0) +
+                (sub.nextExamDays >= 0 ? ` · ${sub.nextExamDays}d` : '')),
+            ])),
+          ),
+        ]));
+      });
+    }
+
+    function renderAlerts(alerts) {
+      const wrap = $('#alert-list');
+      wrap.innerHTML = '';
+      if (!alerts.alerts.length) {
+        wrap.appendChild(el('div', { class: 'card center' }, [
+          el('div', { class: 'serif', style: 'font-size: 17px;' }, 'All clear'),
+          el('div', { class: 'muted', style: 'font-size: 13px;' }, 'No active signals.'),
+        ]));
+        return;
+      }
+      alerts.alerts.slice(0, 5).forEach(a => {
+        wrap.appendChild(el('div', { class: 'alert ' + severityClass(a.severity) }, [
+          el('div', { class: 'alert-bar' }),
+          el('div', { class: 'alert-body' }, [
+            el('div', { class: 'alert-head' }, [
+              el('div', { class: 'alert-title' }, a.title),
+              severityChip(a.severity),
+            ]),
+            el('div', { class: 'alert-msg' }, a.message),
+            el('div', { class: 'alert-action' }, '→ ' + a.actionHint),
+          ]),
+        ]));
+      });
+    }
+
+    function renderUpcomingExams(exams) {
+      const card = $('#upcoming-exams');
+      card.innerHTML = '';
+      const upcoming = exams.upcoming.slice(0, 4);
+      if (!upcoming.length) {
+        card.appendChild(el('div', { class: 'muted center', style: 'padding: 12px 0; font-size: 13px;' },
+          'No upcoming exams.'));
+        return;
+      }
+      upcoming.forEach(e => {
+        card.appendChild(el('div', { class: 'schedule-item' }, [
+          el('div', { class: 'schedule-time' }, [
+            el('div', {}, e.daysUntil + 'd'),
+            el('div', { class: 'dim', style: 'font-size: 10.5px;' }, e.dateReadable.split(' ').slice(0,2).join(' ')),
+          ]),
+          el('div', { class: 'schedule-body' }, [
+            el('div', { class: 'schedule-title' }, e.subjectName),
+            el('div', { class: 'schedule-meta' }, `${e.type} · ${e.time || 'TBA'} · ${e.venue || 'TBA'}`),
+          ]),
+        ]));
+      });
+    }
+
+    function renderSubjectTable(data) {
+      const tbody = $('#subject-table');
+      tbody.innerHTML = '';
+      data.subjects.forEach(sub => {
+        const predict = data.predict.subjects.find(p => p.code === sub.code) || {};
+        const risk    = data.risk.subjects.find(r => r.code === sub.code) || {};
+        const trend   = predict.trend || '—';
+        const trendKind = trend === 'improving' ? 'pos' : trend === 'declining' ? 'neg' : '';
+        const riskKind = risk.risk === 'Critical' ? 'neg'
+                       : risk.risk === 'Warning'  ? 'cau' : 'pos';
+        tbody.appendChild(el('tr', {}, [
+          el('td', { class: 'name' }, [
+            sub.name,
+            el('div', { class: 'meta' }, sub.code + ' · ' + sub.credits + ' cr'),
+          ]),
+          el('td', { class: 'mono' }, fmt.pct(sub.attendance.percentage)),
+          el('td', { class: 'mono' }, fmt.pct(sub.averagePercent)),
+          el('td', { class: 'mono' }, predict.prediction != null ? fmt.pct(predict.prediction) : '—'),
+          el('td', {}, [ el('span', { class: 'tag ' + trendKind }, [ el('span', { class: 'dot' }), trend ]) ]),
+          el('td', {}, [ el('span', { class: 'chip ' + riskKind  }, risk.risk || '—') ]),
+        ]));
+      });
+    }
+
+    function renderGoals(goals) {
+      const card = $('#goals-card');
+      card.innerHTML = '';
+      if (!goals.length) {
+        card.appendChild(el('div', { class: 'muted center', style: 'padding: 12px 0; font-size: 13px;' },
+          'Set your first goal →'));
+        return;
+      }
+      goals.slice(0, 3).forEach(g => {
+        card.appendChild(el('div', { class: 'metric-row' }, [
+          el('div', { class: 'metric-row-name' }, [
+            g.title,
+            el('div', { class: 'meta' }, g.type),
+          ]),
+          el('div', { class: 'bar accent' }, [
+            el('span', { style: `width:${g.progress.toFixed(0)}%` }),
+          ]),
+          el('div', { class: 'metric-row-value' }, fmt.num(g.progress, 0) + '%'),
+        ]));
+      });
+    }
+
+    // tiny inline SVGs for stat tile icons
+    function iconBookSmall() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4z"/><path d="M4 4v16"/></svg>'; }
+    function iconTrendSmall(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>'; }
+    function iconHeartSmall(){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M12 21s-7-4.35-7-10a4.5 4.5 0 0 1 8-2.83A4.5 4.5 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>'; }
+    function iconBellSmall() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16z"/></svg>'; }
+
+    load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Profile</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Student profile</h2>
+            <div class="section-meta">read-only summary · click edit to update</div>
+          </div>
+          <div class="section-actions">
+            <button class="btn btn-primary" id="btn-edit">Edit details</button>
+          </div>
+        </header>
+
+        <div class="profile-grid">
+          <div class="profile-hero">
+            <div class="profile-avatar" id="avatar">—</div>
+            <div class="profile-name" id="name">Loading…</div>
+            <div class="profile-roll" id="roll">—</div>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title">Details</h3>
+            <p class="card-meta">Identity, program and current semester.</p>
+            <div id="details"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Snapshot</h2>
+          <div class="section-meta">live aggregates from the backend</div>
+        </header>
+        <div class="grid grid-4" id="stats-grid"></div>
+      </section>
+
+      <footer class="app-footer">
+        <div>SSAAS · Profile · Person → Student inheritance, validated setters</div>
+        <a href="index.html" class="btn btn-ghost">← Overview</a>
+      </footer>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-profile');
+
+    let cachedStudent = null;
+
+    async function load() {
+      try {
+        const student = await API.student();
+        cachedStudent = student;
+
+        const slot = $('#topbar-slot'); slot.innerHTML = '';
+        slot.appendChild(topbar('Profile', 'Manage your student details', student));
+
+        const initials = student.name.split(' ')
+          .map(s => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+        $('#avatar').textContent = initials;
+        $('#name').textContent   = student.name;
+        $('#roll').textContent   = student.rollNumber + ' · Sem ' + student.semester;
+
+        const det = $('#details');
+        det.innerHTML = '';
+        det.append(...[
+          ['Name',       student.name],
+          ['Roll number',student.rollNumber],
+          ['Email',      student.email],
+          ['Program',    student.program],
+          ['Semester',   String(student.semester)],
+          ['Subjects',   String(student.subjectCount) + ' enrolled'],
+          ['Goals',      String(student.goalCount) + ' active'],
+        ].map(([label, value]) =>
+          el('div', { class: 'profile-detail-row' }, [
+            el('div', { class: 'label' }, label),
+            el('div', { class: 'value' }, value),
+          ])
+        ));
+
+        renderSnapshot(student);
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderSnapshot(s) {
+      const wrap = $('#stats-grid');
+      wrap.innerHTML = '';
+      const tile = (label, value, sub, kind) =>
+        el('div', { class: 'card stat hoverable' }, [
+          el('div', { class: 'stat-label' }, label),
+          el('div', { class: 'stat-value' }, value),
+          el('div', { class: 'stat-sub ' + (kind ? 'text-' + kind : '') }, sub),
+        ]);
+      wrap.appendChild(tile('Attendance',
+        el('span', {}, [fmt.num(s.overallAttendance), el('span', { class: 'unit' }, '%')]),
+        s.overallAttendance >= 75 ? 'on track' : 'below target',
+        s.overallAttendance >= 75 ? 'pos' : 'cau'));
+      wrap.appendChild(tile('Performance',
+        el('span', {}, [fmt.num(s.creditWeightedAverage), el('span', { class: 'unit' }, '%')]),
+        'credit-weighted'));
+      wrap.appendChild(tile('Upcoming exams',
+        String(s.upcomingExamCount), 'next 30 days'));
+      wrap.appendChild(tile('Active goals',
+        String(s.goalCount), s.competitionCount + ' competitions tracked'));
+    }
+
+    function openEditDialog() {
+      if (!cachedStudent) return;
+      const form = buildForm([
+        { name: 'name',     label: 'Name',     type: 'text',   value: cachedStudent.name,     required: true },
+        { name: 'email',    label: 'Email',    type: 'email',  value: cachedStudent.email,    required: true },
+        { name: 'program',  label: 'Program',  type: 'text',   value: cachedStudent.program,  required: true, full: true },
+        { name: 'semester', label: 'Semester', type: 'number', value: cachedStudent.semester, min: 1, max: 12, required: true },
+      ], 'grid');
+
+      Modal.open({
+        title: 'Edit profile',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Save changes'),
+        ],
+      });
+
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.updateStudent(d);
+          Modal.close();
+          toast('Profile updated', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    $('#btn-edit').addEventListener('click', openEditDialog);
+
+    load();
+  </script>
+</body>
+</html>

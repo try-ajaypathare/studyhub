@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Analytics</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Risk cockpit</h2>
+          <div class="section-meta">pressure · bayes · burnout · health</div>
+        </header>
+        <div class="grid grid-4">
+          <div class="card stat">
+            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M12 2v6M12 22v-6M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24"/></svg></div>
+            <div class="stat-label">Pressure</div>
+            <div class="stat-value" id="pressure-score">—</div>
+            <div class="stat-sub" id="pressure-level">—</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-icon neg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M12 2L2 22h20L12 2z"/></svg></div>
+            <div class="stat-label">Bayesian risk</div>
+            <div class="stat-value" id="bayes-score">—</div>
+            <div class="stat-sub" id="bayes-level">—</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-icon cau"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="9"/><path d="M9 9.01M15 9.01M9 16h6"/></svg></div>
+            <div class="stat-label">Burnout</div>
+            <div class="stat-value" id="burn-score">—</div>
+            <div class="stat-sub" id="burn-level">—</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-icon pos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M12 21s-7-4.35-7-10a4.5 4.5 0 0 1 8-2.83A4.5 4.5 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg></div>
+            <div class="stat-label">Health</div>
+            <div class="stat-value" id="health-score">—</div>
+            <div class="stat-sub" id="health-status">—</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Multi-factor risk radar</h2>
+          <div class="section-meta">9 axes · pressure + bayes + burnout</div>
+        </header>
+        <div class="card">
+          <p class="card-meta">
+            Composite signature across pressure components, Bayes indicators
+            and burnout dimensions. Higher = more stress on that axis.
+          </p>
+          <div class="chart-wrap tall"><canvas id="radar"></canvas></div>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Bayesian indicator breakdown</h2>
+          <div class="section-meta">posterior = σ(log priorOdds + Σ log LRᵢ)</div>
+        </header>
+        <div class="card tight">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Indicator</th><th>State</th><th>Strength</th>
+                <th>Likelihood ratio</th><th>Effect on posterior</th>
+              </tr>
+            </thead>
+            <tbody id="ind-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Burnout components</h2>
+          <div class="section-meta">0.45 velocity · 0.30 variance · 0.25 exam-load</div>
+        </header>
+        <div class="card">
+          <div class="chart-wrap"><canvas id="burnout-bar"></canvas></div>
+          <div class="note mt-4" id="burnout-advice"></div>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Smart study plan</h2>
+          <div class="section-meta">priority = weakness × proximity × drag</div>
+        </header>
+        <div class="card">
+          <div class="session-grid" id="session-grid"></div>
+        </div>
+      </section>
+
+      <footer class="app-footer">
+        <div>SSAAS · Analytics · Bayes · Burnout · Pressure · StudyPlan</div>
+        <a href="index.html" class="btn btn-ghost">← Overview</a>
+      </footer>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/charts.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-analytics');
+
+    let radarChart = null, burnoutChart = null;
+
+    async function load() {
+      try {
+        const [student, pressure, bayes, burnout, health, plan] = await Promise.all([
+          API.student(), API.pressure(), API.bayes(), API.burnout(),
+          API.health_score(), API.studyPlan()
+        ]);
+
+        const slot = $('#topbar-slot'); slot.innerHTML = '';
+        slot.appendChild(topbar('Analytics',
+          'Bayesian risk · Burnout · Pressure · Study planner', student));
+
+        $('#pressure-score').textContent = fmt.num(pressure.score, 0);
+        $('#pressure-level').textContent = pressure.level.toLowerCase();
+
+        $('#bayes-score').textContent = fmt.num(bayes.riskScore, 0);
+        $('#bayes-level').textContent = bayes.band.toLowerCase();
+        $('#bayes-level').style.color =
+          (bayes.band === 'Critical' || bayes.band === 'High') ? 'var(--neg)'
+          : bayes.band === 'Moderate' ? 'var(--cau)' : 'var(--pos)';
+
+        $('#burn-score').textContent  = fmt.num(burnout.score, 0);
+        $('#burn-level').textContent  = burnout.level.toLowerCase();
+        $('#burn-level').style.color =
+          burnout.level === 'Burnout Risk' ? 'var(--neg)' :
+          burnout.level === 'Watch'        ? 'var(--cau)' : 'var(--pos)';
+
+        $('#health-score').textContent  = fmt.num(health.score, 0);
+        $('#health-status').textContent = health.status.toLowerCase();
+        $('#health-status').style.color =
+          (health.status === 'Excellent' || health.status === 'Good') ? 'var(--pos)' :
+          health.status === 'Average' ? 'var(--cau)' : 'var(--neg)';
+
+        renderRadar(pressure, bayes, burnout);
+        renderIndicatorTable(bayes);
+        renderBurnoutChart(burnout);
+        renderStudyPlan(plan);
+
+        $('#burnout-advice').textContent = burnout.advice;
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderRadar(pressure, bayes, burnout) {
+      const labels = [
+        'Attendance pressure', 'Performance pressure', 'Exam pressure',
+        'Recent drop', 'Declining trend', 'Unprepared exam',
+        'Att. decline', 'Inconsistency', 'Exam load',
+      ];
+      const values = [
+        Math.min(100, pressure.components.attendance  * 2.5),
+        Math.min(100, pressure.components.performance * 2.5),
+        Math.min(100, pressure.components.exams       * 5.0),
+        ...['recent_drop', 'declining_trend', 'unprepared_exam'].map(name => {
+          const i = bayes.indicators.find(x => x.name === name);
+          return i && i.active ? i.strength * 100 : 0;
+        }),
+        burnout.components.attendanceDecline,
+        Math.min(100, burnout.components.inconsistency),
+        burnout.components.examLoad,
+      ];
+      if (radarChart) radarChart.destroy();
+      radarChart = makeRadarChart($('#radar'), labels, values);
+    }
+
+    function renderIndicatorTable(bayes) {
+      const tbody = $('#ind-table');
+      tbody.innerHTML = '';
+      bayes.indicators.forEach(i => {
+        const lr = i.likelihoodRatio;
+        let effect, effectKind = '';
+        if (lr === 1)    { effect = 'no change'; }
+        else if (lr > 1) { effect = `↑ odds × ${lr.toFixed(2)}`; effectKind = 'cau'; }
+        else             { effect = `↓ odds ÷ ${(1/lr).toFixed(2)}`; effectKind = 'pos'; }
+        tbody.appendChild(el('tr', {}, [
+          el('td', { class: 'name' }, i.name.replace(/_/g, ' ')),
+          el('td', {}, [
+            el('span', { class: 'chip ' + (i.active ? 'cau' : '') },
+              i.active ? 'active' : 'idle'),
+          ]),
+          el('td', {}, [
+            el('div', { class: 'flex gap-3' }, [
+              el('div', { class: 'bar ' + (i.active ? 'cau' : ''), style:'flex:1; min-width: 80px;' }, [
+                el('span', { style: `width:${(i.strength*100).toFixed(0)}%` }),
+              ]),
+              el('div', { class: 'mono', style: 'min-width: 40px; text-align: right; font-size: 12px; color: var(--fg-2);' },
+                `${(i.strength*100).toFixed(0)}%`),
+            ]),
+          ]),
+          el('td', { class: 'mono' }, lr.toFixed(3)),
+          el('td', {}, [
+            el('span', { class: 'chip ' + effectKind }, effect),
+          ]),
+        ]));
+      });
+    }
+
+    function renderBurnoutChart(burnout) {
+      const labels = ['Attendance decline', 'Marks inconsistency', 'Exam load (14d)'];
+      const values = [
+        burnout.components.attendanceDecline,
+        Math.min(100, burnout.components.inconsistency),
+        burnout.components.examLoad,
+      ];
+      if (burnoutChart) burnoutChart.destroy();
+      burnoutChart = makeBarChart($('#burnout-bar'), labels, values, { color: '#d97706' });
+    }
+
+    function renderStudyPlan(plan) {
+      const grid = $('#session-grid');
+      grid.innerHTML = '';
+      plan.sessions.forEach(s => {
+        grid.appendChild(el('div', { class: 'session' }, [
+          el('div', { class: 'session-time' }, s.slot + ' · ' + s.time),
+          el('div', { class: 'session-name' }, s.subjects[0]?.name || 'Open block'),
+          el('div', { class: 'session-goal' }, s.goal),
+          el('div', { class: 'session-subjects' },
+            s.subjects.map(sub => el('div', { class: 'subject' }, [
+              el('span', {}, sub.code),
+              el('span', { class: 'priority' },
+                'p' + sub.priority.toFixed(0) +
+                (sub.nextExamDays >= 0 ? ` · ${sub.nextExamDays}d` : '')),
+            ])),
+          ),
+        ]));
+      });
+    }
+
+    load();
+  </script>
+</body>
+</html>

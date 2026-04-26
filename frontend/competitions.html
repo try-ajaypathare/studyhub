@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Competitions</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Competitions</h2>
+            <div class="section-meta" id="meta">— total · — open · — registered</div>
+          </div>
+          <div class="section-actions">
+            <select id="filter" style="height: 38px;">
+              <option value="all">All status</option>
+              <option value="Open">Open</option>
+              <option value="Registered">Registered</option>
+              <option value="Won">Won</option>
+              <option value="Missed">Missed</option>
+              <option value="Closed">Closed</option>
+            </select>
+            <button class="btn btn-primary" id="btn-add">
+              <span style="display:flex;" id="add-icon"></span> Add competition
+            </button>
+          </div>
+        </header>
+        <div class="grid grid-2" id="comp-grid"></div>
+      </section>
+
+      <footer class="app-footer">
+        <div>SSAAS · Competitions · domain class with full CRUD</div>
+        <a href="index.html" class="btn btn-ghost">← Overview</a>
+      </footer>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-competitions');
+    $('#add-icon').innerHTML = plusSvg();
+
+    let cached = [];
+
+    const STATUS_KIND = {
+      'Open':       'info',
+      'Registered': 'acc',
+      'Won':        'pos',
+      'Missed':     'neg',
+      'Closed':     '',
+    };
+
+    async function load() {
+      try {
+        const [student, comps] = await Promise.all([API.student(), API.competitions()]);
+        cached = comps;
+        const slot = $('#topbar-slot'); slot.innerHTML = '';
+        slot.appendChild(topbar('Competitions', 'Track contests, hackathons & quizzes', student));
+
+        const total = comps.length;
+        const open  = comps.filter(c => c.status === 'Open').length;
+        const reg   = comps.filter(c => c.status === 'Registered').length;
+        $('#meta').textContent = `${total} total · ${open} open · ${reg} registered`;
+
+        renderGrid(comps);
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderGrid(comps) {
+      const filter = $('#filter').value;
+      const list = filter === 'all' ? comps : comps.filter(c => c.status === filter);
+
+      const grid = $('#comp-grid');
+      grid.innerHTML = '';
+      if (!list.length) {
+        grid.appendChild(el('div', { class: 'card empty', style: 'grid-column: 1/-1;' }, [
+          el('div', { class: 'empty-icon', html: '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" width=\"24\" height=\"24\"><path d=\"M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z\"/></svg>' }),
+          el('div', { class: 'empty-title' }, 'No competitions'),
+          el('div', { class: 'empty-text' }, 'Track hackathons, contests, quizzes — anything you compete in.'),
+          el('button', { class: 'btn btn-primary', onClick: openAddDialog }, 'Add competition'),
+        ]));
+        return;
+      }
+      list.forEach(c => {
+        const isPast = c.daysUntilDeadline < 0;
+        const urgKind = isPast ? '' :
+                        c.daysUntilDeadline <= 3 ? 'neg' :
+                        c.daysUntilDeadline <= 7 ? 'cau' : 'info';
+
+        grid.appendChild(el('div', { class: 'card hoverable' }, [
+          el('div', { class: 'card-head' }, [
+            el('div', { style: 'min-width: 0;' }, [
+              el('div', { class: 'flex gap-2' }, [
+                el('span', { class: 'chip ' + (STATUS_KIND[c.status] || '') }, c.status),
+                el('span', { class: 'chip' }, c.category),
+                isPast
+                  ? el('span', { class: 'chip' }, 'closed')
+                  : el('span', { class: 'chip ' + urgKind }, `${c.daysUntilDeadline}d to deadline`),
+              ]),
+              el('h3', { class: 'card-title', style: 'margin-top: var(--s-2);' }, c.title),
+              el('div', { class: 'mono', style: 'font-size: 11.5px; color: var(--fg-3);' },
+                `${c.organizer} · deadline ${c.deadlineReadable}`),
+            ]),
+            actionMenu([
+              { label: 'Mark registered', icon: editSvg(), onClick: () => setStatus(c, 'registered') },
+              { label: 'Mark won',        icon: editSvg(), onClick: () => setStatus(c, 'won') },
+              { label: 'Mark missed',     icon: editSvg(), onClick: () => setStatus(c, 'missed') },
+              '---',
+              { label: 'Edit',   icon: editSvg(),  onClick: () => openEditDialog(c) },
+              { label: 'Delete', icon: trashSvg(), danger: true, onClick: () => confirmDelete(c) },
+            ]),
+          ]),
+          c.description
+            ? el('p', { style: 'font-size: 13px; color: var(--fg-2); margin: var(--s-3) 0 0;' }, c.description)
+            : null,
+          c.prize
+            ? el('div', { class: 'flex gap-2', style: 'margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line);' }, [
+                el('div', { class: 'mono dim', style: 'font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase;' },
+                  'Prize'),
+                el('div', { style: 'font-weight: 500; color: var(--primary);' }, c.prize),
+              ])
+            : null,
+        ]));
+      });
+    }
+
+    function buildCompForm(initial = {}) {
+      return buildForm([
+        { name: 'title',    label: 'Title',    type: 'text', value: initial.title || '', required: true },
+        { name: 'organizer',label: 'Organizer',type: 'text', value: initial.organizer || '' },
+        { name: 'category', label: 'Category', type: 'select',
+          value: (initial.category || 'Hackathon'),
+          options: [
+            { value: 'Hackathon',     label: 'Hackathon' },
+            { value: 'Coding',        label: 'Coding contest' },
+            { value: 'Data Science',  label: 'Data science' },
+            { value: 'Quiz',          label: 'Quiz' },
+            { value: 'Sports',        label: 'Sports' },
+            { value: 'Cultural',      label: 'Cultural' },
+            { value: 'Other',         label: 'Other' },
+          ] },
+        { name: 'deadline', label: 'Deadline', type: 'date', value: initial.deadline || fmt.todayISO(), required: true },
+        { name: 'prize',    label: 'Prize',    type: 'text', value: initial.prize || '', placeholder: '₹50,000 + internship' },
+        { name: 'status',   label: 'Status',   type: 'select',
+          value: (initial.status || 'open').toLowerCase(),
+          options: [
+            { value: 'open',       label: 'Open' },
+            { value: 'registered', label: 'Registered' },
+            { value: 'won',        label: 'Won' },
+            { value: 'missed',     label: 'Missed' },
+            { value: 'closed',     label: 'Closed' },
+          ] },
+        { name: 'description', label: 'Description', type: 'textarea', value: initial.description || '' },
+      ], 'grid');
+    }
+
+    function openAddDialog() {
+      const form = buildCompForm();
+      Modal.open({
+        title: 'Add competition',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Add'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.addCompetition(d);
+          Modal.close();
+          toast('Competition added', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    function openEditDialog(c) {
+      const form = buildCompForm(c);
+      Modal.open({
+        title: 'Edit competition',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Save'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.updateCompetition(c.id, d);
+          Modal.close();
+          toast('Saved', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    async function setStatus(c, status) {
+      try {
+        await API.updateCompetition(c.id, { ...c, status });
+        toast(`Status: ${status}`, 'pos');
+        load();
+      } catch (err) { toast(err.message, 'neg'); }
+    }
+
+    async function confirmDelete(c) {
+      const ok = await Confirm(`Delete "${c.title}"?`);
+      if (!ok) return;
+      try {
+        await API.deleteCompetition(c.id);
+        toast('Deleted', 'pos');
+        load();
+      } catch (err) { toast(err.message, 'neg'); }
+    }
+
+    $('#btn-add').addEventListener('click', openAddDialog);
+    $('#filter').addEventListener('change', () => renderGrid(cached));
+
+    load();
+  </script>
+</body>
+</html>

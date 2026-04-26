@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Subjects</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">My subjects</h2>
+            <div class="section-meta" id="meta">— enrolled · — credits</div>
+          </div>
+          <div class="section-actions">
+            <button class="btn btn-primary" id="add-subject">
+              <span style="display:flex;" id="add-icon"></span> Add subject
+            </button>
+          </div>
+        </header>
+        <div class="grid grid-3" id="subject-grid"></div>
+      </section>
+
+      <footer class="app-footer">
+        <div>SSAAS · Subjects · Repository&lt;Subject&gt; · template-based store</div>
+        <a href="index.html" class="btn btn-ghost">← Overview</a>
+      </footer>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-subjects');
+    $('#add-icon').innerHTML = plusSvg();
+
+    let cachedExams = [];
+
+    async function load() {
+      try {
+        const [student, subjects, exams] = await Promise.all([
+          API.student(), API.subjects(), API.exams()
+        ]);
+        cachedExams = exams;
+        $('#topbar-slot').innerHTML = '';
+        $('#topbar-slot').appendChild(topbar('Subjects',
+          `${subjects.length} courses · ${student.program}`, student));
+
+        const totalCredits = subjects.reduce((a, s) => a + s.credits, 0);
+        $('#meta').textContent = `${subjects.length} enrolled · ${totalCredits} total credits`;
+
+        renderGrid(subjects, exams);
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderGrid(subjects, exams) {
+      const grid = $('#subject-grid');
+      grid.innerHTML = '';
+      if (!subjects.length) {
+        grid.appendChild(el('div', { class: 'card empty', style: 'grid-column: 1/-1;' }, [
+          el('div', { class: 'empty-icon', html: '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" width=\"24\" height=\"24\"><path d=\"M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4z\"/></svg>' }),
+          el('div', { class: 'empty-title' }, 'No subjects yet'),
+          el('div', { class: 'empty-text' }, 'Add your first subject to start tracking attendance and marks.'),
+          el('button', { class: 'btn btn-primary', onClick: openAddDialog }, 'Add subject'),
+        ]));
+        return;
+      }
+      subjects.forEach(s => {
+        const upcoming = exams
+          .filter(e => e.subject === s.code && e.daysUntil >= 0)
+          .sort((a, b) => a.daysUntil - b.daysUntil)[0];
+
+        const att = s.attendance.percentage;
+        const attCls = att >= 75 ? 'pos' : att >= 65 ? 'cau' : 'neg';
+        const avg = s.averagePercent || 0;
+        const avgCls = avg >= 70 ? 'pos' : avg >= 50 ? 'cau' : 'neg';
+        const accent = codeAccent(s.code);
+
+        const card = el('div', { class: 'card hoverable' }, [
+          el('div', { class: 'card-head' }, [
+            el('div', { style: 'min-width: 0;' }, [
+              el('div', { class: 'flex gap-2', style: 'align-items: center;' }, [
+                el('span', { style: `display:inline-block;width:8px;height:8px;border-radius:50%;background:${accent};` }),
+                el('span', { class: 'mono', style: 'font-size: 11px; color: var(--fg-3); letter-spacing: 0.04em;' }, s.code),
+              ]),
+              el('h3', { class: 'card-title', style: 'margin-top: 6px;' }, s.name),
+              el('div', { class: 'mono', style: 'font-size: 11.5px; color: var(--fg-3);' },
+                `${s.credits} credits · ${s.professor || 'TBA'}`),
+            ]),
+            actionMenu([
+              { label: 'Edit',          icon: editSvg(),  onClick: () => openEditDialog(s) },
+              { label: 'Set attendance',icon: editSvg(),  onClick: () => openAttendanceDialog(s) },
+              '---',
+              { label: 'Delete',        icon: trashSvg(), danger: true, onClick: () => confirmDelete(s) },
+            ]),
+          ]),
+
+          el('div', { style: 'margin-top: var(--s-3);' }, [
+            el('div', { class: 'metric-row' }, [
+              el('div', { class: 'metric-row-name' }, [
+                'Attendance',
+                el('div', { class: 'meta' }, `${s.attendance.attended}/${s.attendance.total} lectures`),
+              ]),
+              el('div', { class: 'bar ' + attCls }, [
+                el('span', { style: `width:${Math.max(0, Math.min(100, att))}%` }),
+              ]),
+              el('div', { class: 'metric-row-value' }, fmt.pct(att)),
+            ]),
+            el('div', { class: 'metric-row' }, [
+              el('div', { class: 'metric-row-name' }, [
+                'Average marks',
+                el('div', { class: 'meta' }, `${s.assessmentCount} assessments`),
+              ]),
+              el('div', { class: 'bar ' + avgCls }, [
+                el('span', { style: `width:${Math.max(0, Math.min(100, avg))}%` }),
+              ]),
+              el('div', { class: 'metric-row-value' }, fmt.pct(avg)),
+            ]),
+          ]),
+
+          el('div', { class: 'flex between', style: 'margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line);' }, [
+            el('div', { class: 'mono', style: 'font-size: 11.5px; color: var(--fg-3);' },
+              s.schedule || 'schedule TBA'),
+            upcoming
+              ? el('span', { class: 'chip ' + (upcoming.daysUntil <= 7 ? 'cau' : 'info') },
+                  `Exam · ${upcoming.daysUntil}d`)
+              : el('span', { class: 'chip' }, 'No exam set'),
+          ]),
+        ]);
+        grid.appendChild(card);
+      });
+    }
+
+    /* ---------- Add ---------- */
+    function openAddDialog() {
+      const form = buildForm([
+        { name: 'code',      label: 'Course code',  type: 'text', required: true, placeholder: 'CS401' },
+        { name: 'name',      label: 'Course name',  type: 'text', required: true, placeholder: 'Machine Learning' },
+        { name: 'credits',   label: 'Credits',      type: 'number', value: 3, min: 1, max: 8, required: true },
+        { name: 'professor', label: 'Professor',    type: 'text', placeholder: 'Dr. Sharma' },
+        { name: 'schedule',  label: 'Schedule',     type: 'text', placeholder: 'Mon/Wed 10:00' },
+      ], 'grid');
+
+      Modal.open({
+        title: 'Add subject',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Add subject'),
+        ],
+      });
+
+      async function submit() {
+        const data = readForm(form);
+        if (!data.code || !data.name) { toast('Code and name required', 'neg'); return; }
+        try {
+          await API.addSubject(data);
+          Modal.close();
+          toast(`Added ${data.code}`, 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    /* ---------- Edit ---------- */
+    function openEditDialog(s) {
+      const form = buildForm([
+        { name: 'code',      label: 'Course code', type: 'text', value: s.code, required: true },
+        { name: 'name',      label: 'Course name', type: 'text', value: s.name, required: true },
+        { name: 'credits',   label: 'Credits',     type: 'number', value: s.credits, min: 1, max: 8, required: true },
+        { name: 'professor', label: 'Professor',   type: 'text', value: s.professor || '' },
+        { name: 'schedule',  label: 'Schedule',    type: 'text', value: s.schedule  || '' },
+      ], 'grid');
+
+      Modal.open({
+        title: `Edit ${s.code}`,
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Save changes'),
+        ],
+      });
+
+      async function submit() {
+        const data = readForm(form);
+        try {
+          await API.updateSubject(s.code, data);
+          Modal.close();
+          toast('Subject updated', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    /* ---------- Set attendance counters ---------- */
+    function openAttendanceDialog(s) {
+      const form = buildForm([
+        { name: 'total',    label: 'Total lectures',    type: 'number', value: s.attendance.total,    min: 0, required: true },
+        { name: 'attended', label: 'Attended lectures', type: 'number', value: s.attendance.attended, min: 0, required: true },
+      ], 'grid');
+
+      Modal.open({
+        title: `Attendance · ${s.code}`,
+        body: [
+          el('div', { class: 'note' },
+            'Set the canonical counters for this subject. The dashboard recomputes immediately.'),
+          form,
+        ],
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Save'),
+        ],
+      });
+
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.setAttendance(s.code, d.total, d.attended);
+          Modal.close();
+          toast('Attendance saved', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    /* ---------- Delete ---------- */
+    async function confirmDelete(s) {
+      const ok = await Confirm(
+        `Delete ${s.code} — ${s.name}? This will also remove ${s.attendance.attended} attendance records, marks and exams referencing it.`);
+      if (!ok) return;
+      try {
+        await API.deleteSubject(s.code);
+        toast(`Deleted ${s.code}`, 'pos');
+        load();
+      } catch (err) { toast(err.message, 'neg'); }
+    }
+
+    $('#add-subject').addEventListener('click', openAddDialog);
+
+    load();
+  </script>
+</body>
+</html>

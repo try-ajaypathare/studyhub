@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSAAS · Exams</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <main class="main">
+      <div id="topbar-slot"></div>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <div>
+            <h2 class="section-title">Exam summary</h2>
+            <div class="section-meta">analyzer · examCountdown</div>
+          </div>
+          <div class="section-actions">
+            <button class="btn btn-primary" id="btn-add"><span style="display:flex;" id="add-icon"></span> Add exam</button>
+          </div>
+        </header>
+        <div class="grid grid-3">
+          <div class="card stat">
+            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+            <div class="stat-label">Nearest</div>
+            <div class="stat-value" id="nearest-days"><span class="skeleton" style="width:50px;"></span></div>
+            <div class="stat-sub" id="nearest-sub">—</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-icon info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+            <div class="stat-label">Upcoming</div>
+            <div class="stat-value" id="upcoming-count">—</div>
+            <div class="stat-sub">across all subjects</div>
+          </div>
+          <div class="card stat">
+            <div class="stat-icon pos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M5 13l4 4L19 7"/></svg></div>
+            <div class="stat-label">Avg preparation</div>
+            <div class="stat-value" id="avg-prep">—</div>
+            <div class="stat-sub">across upcoming exams</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Countdown</h2>
+          <div class="section-meta">live days-until calculation</div>
+        </header>
+        <div class="card hero" id="countdown-card" style="text-align: center;">
+          <div class="hero-date" id="countdown-name">—</div>
+          <div class="serif" id="countdown-meta" style="font-size: 14px; opacity: 0.8;">—</div>
+          <div class="serif" id="countdown-days"
+               style="font-size: clamp(72px, 11vw, 120px); font-weight: 500; letter-spacing: -0.06em; margin: var(--s-3) 0; line-height: 1;">—</div>
+          <div class="hero-date" id="countdown-unit">days remaining</div>
+        </div>
+      </section>
+
+      <section class="section fade-in">
+        <header class="section-header">
+          <h2 class="section-title">Schedule</h2>
+          <div class="section-meta">all upcoming · sorted by date</div>
+        </header>
+        <div class="card tight">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Subject</th><th>Type</th><th>Date</th><th>Time</th><th>Venue</th>
+                <th>Days</th><th>Preparation</th><th class="right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="exam-table"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="app-footer">
+        <div>SSAAS · Exams · ExamCountdownAnalyzer + alert observer</div>
+        <a href="index.html" class="btn btn-ghost">← Overview</a>
+      </footer>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    injectShell();
+    setActiveNav('nav-exams');
+    $('#add-icon').innerHTML = plusSvg();
+
+    let cachedSubjects = [];
+
+    async function load() {
+      try {
+        const [student, exams, subjects] = await Promise.all([
+          API.student(), API.exams(), API.subjects()
+        ]);
+        cachedSubjects = subjects;
+        const slot = $('#topbar-slot'); slot.innerHTML = '';
+        slot.appendChild(topbar('Exams', 'Schedule + live countdown', student));
+
+        const upcoming = exams.filter(e => e.daysUntil >= 0)
+                              .sort((a, b) => a.daysUntil - b.daysUntil);
+
+        $('#upcoming-count').textContent = upcoming.length;
+        const avg = upcoming.length
+          ? upcoming.reduce((a, b) => a + b.preparation, 0) / upcoming.length
+          : 0;
+        $('#avg-prep').innerHTML = `${fmt.num(avg, 0)}<span class="unit">%</span>`;
+
+        if (upcoming[0]) {
+          const n = upcoming[0];
+          $('#nearest-days').innerHTML  = `${n.daysUntil}<span class="unit">d</span>`;
+          $('#nearest-sub').textContent = `${n.subject} · ${n.dateReadable}`;
+          $('#countdown-name').textContent = `Next exam · ${n.subject} ${n.type}`;
+          $('#countdown-meta').textContent = `${n.dateReadable} · ${n.time || 'time TBA'} · ${n.venue || 'venue TBA'}`;
+          $('#countdown-days').textContent = n.daysUntil;
+        } else {
+          $('#countdown-name').textContent = 'No upcoming exams';
+          $('#countdown-days').textContent = '—';
+          $('#countdown-meta').textContent = 'You are caught up.';
+          $('#countdown-unit').textContent = '';
+        }
+
+        renderTable(exams);
+      } catch (err) { showError($('.main'), err); }
+    }
+
+    function renderTable(exams) {
+      const tbody = $('#exam-table');
+      tbody.innerHTML = '';
+      const all = [...exams].sort((a, b) => a.date.localeCompare(b.date));
+      all.forEach(e => {
+        const isPast = e.daysUntil < 0;
+        const urgKind = isPast ? '' :
+                        e.daysUntil <= 3 ? 'neg' :
+                        e.daysUntil <= 7 ? 'cau' : '';
+        const prepKind = e.preparation >= 70 ? 'pos'
+                       : e.preparation >= 40 ? 'cau' : 'neg';
+        tbody.appendChild(el('tr', {}, [
+          el('td', { class: 'name mono' }, e.subject),
+          el('td', {}, e.type),
+          el('td', { class: 'mono' }, e.dateReadable),
+          el('td', { class: 'mono' }, e.time || '—'),
+          el('td', {}, e.venue || '—'),
+          el('td', {}, [
+            isPast
+              ? el('span', { class: 'chip' }, 'past')
+              : el('span', { class: 'chip ' + urgKind }, `${e.daysUntil}d`),
+          ]),
+          el('td', {}, [
+            el('div', { class: 'flex gap-2' }, [
+              el('div', { class: 'bar ' + prepKind, style: 'flex:1; min-width: 60px;' }, [
+                el('span', { style: `width:${e.preparation}%` }),
+              ]),
+              el('div', { class: 'mono', style: 'min-width:36px; text-align:right; color: var(--fg-2); font-size: 12px;' },
+                `${e.preparation}%`),
+            ]),
+          ]),
+          el('td', { class: 'right' }, [
+            el('div', { class: 'row-actions' }, [
+              actionMenu([
+                { label: 'Edit',           icon: editSvg(),  onClick: () => openEditDialog(e) },
+                { label: 'Update prep',    icon: editSvg(),  onClick: () => openPrepDialog(e) },
+                { label: 'Delete',         icon: trashSvg(), danger: true, onClick: () => confirmDelete(e) },
+              ]),
+            ]),
+          ]),
+        ]));
+      });
+    }
+
+    function buildExamForm(initial = {}) {
+      return buildForm([
+        { name: 'subject', label: 'Subject', type: 'select', required: true,
+          value: initial.subject || cachedSubjects[0]?.code,
+          options: cachedSubjects.map(s => ({ value: s.code, label: `${s.code} — ${s.name}` })) },
+        { name: 'type', label: 'Exam type', type: 'select',
+          value: (initial.type || 'endterm').toLowerCase().replace(' ', ''),
+          options: [
+            { value: 'midterm',  label: 'Mid Term' },
+            { value: 'endterm',  label: 'End Term' },
+            { value: 'quiz',     label: 'Quiz' },
+            { value: 'practical',label: 'Practical' },
+            { value: 'project',  label: 'Project' },
+          ] },
+        { name: 'date',     label: 'Date',           type: 'date',   value: initial.date || fmt.todayISO(), required: true },
+        { name: 'time',     label: 'Time',           type: 'text',   value: initial.time || '', placeholder: '10:00' },
+        { name: 'venue',    label: 'Venue',          type: 'text',   value: initial.venue || '', placeholder: 'Hall A' },
+        { name: 'max',      label: 'Max marks',      type: 'number', value: initial.max ?? 100, min: 1 },
+        { name: 'preparation', label: 'Prep %',      type: 'number', value: initial.preparation ?? 0, min: 0, max: 100 },
+      ], 'grid');
+    }
+
+    function openAddDialog() {
+      if (!cachedSubjects.length) { toast('Add a subject first', 'cau'); return; }
+      const form = buildExamForm();
+      Modal.open({
+        title: 'Add exam',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Add exam'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.addExam(d);
+          Modal.close();
+          toast('Exam added', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    function openEditDialog(e) {
+      const form = buildExamForm(e);
+      Modal.open({
+        title: 'Edit exam',
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Save'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.updateExam(e.id, d);
+          Modal.close();
+          toast('Saved', 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    function openPrepDialog(e) {
+      const form = buildForm([
+        { name: 'preparation', label: 'Preparation %', type: 'number',
+          value: e.preparation, min: 0, max: 100, required: true },
+      ]);
+      Modal.open({
+        title: `${e.subject} — preparation`,
+        body: form,
+        footer: [
+          el('button', { class: 'btn',         onClick: () => Modal.close() }, 'Cancel'),
+          el('button', { class: 'btn btn-primary', onClick: submit }, 'Save'),
+        ],
+      });
+      async function submit() {
+        const d = readForm(form);
+        try {
+          await API.setExamPrep(e.subject, d.preparation);
+          Modal.close();
+          toast(`${e.subject} prep · ${d.preparation}%`, 'pos');
+          load();
+        } catch (err) { toast(err.message, 'neg'); }
+      }
+    }
+
+    async function confirmDelete(e) {
+      const ok = await Confirm(`Delete ${e.subject} ${e.type} on ${e.dateReadable}?`);
+      if (!ok) return;
+      try {
+        await API.deleteExam(e.id);
+        toast('Deleted', 'pos');
+        load();
+      } catch (err) { toast(err.message, 'neg'); }
+    }
+
+    $('#btn-add').addEventListener('click', openAddDialog);
+
+    load();
+  </script>
+</body>
+</html>
