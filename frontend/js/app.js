@@ -144,6 +144,12 @@ function injectShell() {
   // Toast container
   document.body.appendChild(el('div', { id: 'toasts',
     style: 'position: fixed; top: 16px; right: 16px; z-index: 70; display: flex; flex-direction: column; gap: 8px;' }));
+
+  // Boot the priority alert system. alerts.js exposes window.Alerts; the
+  // module then uses a MutationObserver to wait for the topbar (with bell)
+  // to appear after async dashboard fetches resolve.
+  if (window.Alerts) window.Alerts.init();
+  else setTimeout(() => window.Alerts && window.Alerts.init(), 200);
 }
 
 function navItem([id, href, icon, label]) {
