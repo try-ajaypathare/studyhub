@@ -28,6 +28,14 @@ void AlertSystem::unsubscribe(int handle) {
 void AlertSystem::refreshFrom(const Student& student) {
     currentAlerts = AlertFactory::deriveAlerts(student);
 
+    // Sort by polymorphic priority score (descending) so highest-priority
+    // alerts come first. Each alert's getPriorityScore() is virtual and
+    // computed by the concrete subclass — Strategy + polymorphism pattern.
+    std::sort(currentAlerts.begin(), currentAlerts.end(),
+        [](const AlertPtr& a, const AlertPtr& b) {
+            return a->getPriorityScore() > b->getPriorityScore();
+        });
+
     Logger::getInstance().info(
         "AlertSystem refreshed: " + std::to_string(currentAlerts.size()) + " alert(s)");
 
@@ -49,12 +57,26 @@ int AlertSystem::countOf(AlertSeverity s) const {
 nlohmann::json AlertSystem::toJson() const {
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& a : currentAlerts) arr.push_back(a->toJson());
+
+    int p0 = 0, p1 = 0, p2 = 0, p3 = 0;
+    for (const auto& a : currentAlerts) {
+        switch (a->getTier()) {
+            case PriorityTier::P0: p0++; break;
+            case PriorityTier::P1: p1++; break;
+            case PriorityTier::P2: p2++; break;
+            case PriorityTier::P3: p3++; break;
+        }
+    }
+
     nlohmann::json out;
     out["alerts"] = arr;
     out["counts"] = {
         {"critical", countOf(AlertSeverity::CRITICAL)},
         {"warning",  countOf(AlertSeverity::WARNING)},
         {"info",     countOf(AlertSeverity::INFO)}
+    };
+    out["tierCounts"] = {
+        {"P0", p0}, {"P1", p1}, {"P2", p2}, {"P3", p3}
     };
     return out;
 }

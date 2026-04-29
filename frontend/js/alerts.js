@@ -13,9 +13,16 @@
 
 window.Alerts = (() => {
 
-  /* ---------- Priority engine ---------- */
+  /* ---------- Priority engine ----------
+   *
+   *   The C++ backend now computes priorityScore + tier polymorphically
+   *   (each IAlert subclass overrides getPriorityScore). This module
+   *   prefers the server-supplied values and falls back to a local
+   *   reproduction of the formulas if the server is older / offline.
+   */
 
-  function scoreAlert(a) {
+  // Local fallback — mirrors the C++ formulas in the IAlert hierarchy.
+  function scoreAlertLocal(a) {
     let s = 0;
     const sev = (a.severity || '').toLowerCase();
     if (sev === 'critical')      s += 60;
@@ -24,7 +31,6 @@ window.Alerts = (() => {
 
     const cat = (a.category || '').toLowerCase();
 
-    // Time urgency for exam alerts
     if (cat === 'exam' && a.daysUntil != null) {
       const d = a.daysUntil;
       if (d <= 1)      s += 30;
@@ -32,24 +38,23 @@ window.Alerts = (() => {
       else if (d <= 7) s += 10;
       if (a.preparation != null && a.preparation < 30) s += 10;
     }
-
-    // Attendance: how far below target
     if (cat === 'attendance' && a.currentPercent != null) {
-      const gap = Math.max(0, 75 - a.currentPercent);
-      s += Math.min(20, gap);
+      s += Math.min(20, Math.max(0, 75 - a.currentPercent));
     }
-
-    // Performance: drop magnitude
     if (cat === 'performance' && a.delta != null) {
       s += Math.min(20, Math.abs(a.delta));
     }
-
-    // Wellbeing/burnout
     if (cat === 'wellbeing' && a.score != null) {
       s += Math.min(15, Math.max(0, a.score - 30) / 4);
     }
-
     return Math.min(100, Math.round(s));
+  }
+
+  function scoreAlert(a) {
+    // Backend-supplied score wins; only fall back if the server is silent.
+    return (typeof a.priorityScore === 'number')
+      ? Math.round(a.priorityScore)
+      : scoreAlertLocal(a);
   }
 
   function tierFor(score) {
@@ -73,12 +78,12 @@ window.Alerts = (() => {
   }
 
   function enrich(rawAlerts) {
-    return rawAlerts.map(a => ({
-      ...a,
-      _id: alertId(a),
-      _score: scoreAlert(a),
-      _tier: tierFor(scoreAlert(a)),
-    })).sort((x, y) => y._score - x._score);
+    return rawAlerts.map(a => {
+      const score = scoreAlert(a);
+      // Trust server tier if provided; otherwise derive from score.
+      const tier  = (typeof a.tier === 'string') ? a.tier : tierFor(score);
+      return { ...a, _id: alertId(a), _score: score, _tier: tier };
+    }).sort((x, y) => y._score - x._score);
   }
 
   /* ---------- Snooze / dismiss state ---------- */

@@ -30,6 +30,16 @@ std::string AttendanceAlert::getActionHint() const {
     return "Talk to faculty — recovery via attendance alone may be impossible.";
 }
 
+// Severity base + (target − current) clamped to 20.
+// e.g. critical at 50% → 60 + 20 = 80 (P0). Warning at 70% → 30 + 5 = 35 (P2).
+int AttendanceAlert::getPriorityScore() const {
+    double gap = targetPercent - currentPercent;
+    if (gap < 0) gap = 0;
+    if (gap > 20) gap = 20;
+    int s = severityBaseScore() + static_cast<int>(gap);
+    return s > 100 ? 100 : s;
+}
+
 nlohmann::json AttendanceAlert::toJson() const {
     auto j = IAlert::toJson();
     j["subjectCode"]   = subjectCode;

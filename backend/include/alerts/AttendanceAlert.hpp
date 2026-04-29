@@ -15,6 +15,7 @@ public:
     std::string getCategory() const override { return "Attendance"; }
     std::string getMessage()  const override;
     std::string getActionHint() const override;
+    int         getPriorityScore() const override;     // severity + gap below target
 
     nlohmann::json toJson() const override;
 

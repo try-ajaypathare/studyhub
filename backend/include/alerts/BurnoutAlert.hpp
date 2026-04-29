@@ -12,6 +12,7 @@ public:
     std::string getCategory()   const override { return "Wellbeing"; }
     std::string getMessage()    const override;
     std::string getActionHint() const override;
+    int         getPriorityScore() const override;     // severity + score above 30 / 4
     nlohmann::json toJson()     const override;
 
 private:

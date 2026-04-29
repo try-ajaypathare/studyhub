@@ -36,6 +36,15 @@ std::string PerformanceAlert::getActionHint() const {
     return "Add 30 min/day of focused practice on weak topics.";
 }
 
+// Severity base + |delta| clamped to 20.
+// e.g. warning + 16-pt drop → 30 + 16 = 46 (P2). Critical + 18 drop → 60 + 18 = 78 (P1).
+int PerformanceAlert::getPriorityScore() const {
+    double mag = dropDelta < 0 ? -dropDelta : dropDelta;
+    if (mag > 20) mag = 20;
+    int s = severityBaseScore() + static_cast<int>(mag);
+    return s > 100 ? 100 : s;
+}
+
 nlohmann::json PerformanceAlert::toJson() const {
     auto j = IAlert::toJson();
     j["subjectCode"]   = subjectCode;

@@ -28,6 +28,19 @@ std::string ExamAlert::getActionHint() const {
     return "Block 3 hours of deep work today on this subject.";
 }
 
+// Severity base + days-until urgency + low-prep bonus.
+//   ≤1 day: +30 · ≤3 days: +20 · ≤7 days: +10
+//   prep <30%: +10 (cumulative)
+// e.g. critical + 2 days + 25% prep → 60 + 20 + 10 = 90 (P0)
+int ExamAlert::getPriorityScore() const {
+    int s = severityBaseScore();
+    if (daysUntil <= 1)      s += 30;
+    else if (daysUntil <= 3) s += 20;
+    else if (daysUntil <= 7) s += 10;
+    if (preparationProgress < 30) s += 10;
+    return s > 100 ? 100 : s;
+}
+
 nlohmann::json ExamAlert::toJson() const {
     auto j = IAlert::toJson();
     j["subjectCode"] = subjectCode;

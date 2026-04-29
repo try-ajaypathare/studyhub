@@ -16,6 +16,7 @@ public:
     std::string getCategory() const override { return "Performance"; }
     std::string getMessage()  const override;
     std::string getActionHint() const override;
+    int         getPriorityScore() const override;     // severity + drop magnitude
     nlohmann::json toJson() const override;
 
 private:

@@ -16,6 +16,7 @@ public:
     std::string getCategory()   const override { return "Exam"; }
     std::string getMessage()    const override;
     std::string getActionHint() const override;
+    int         getPriorityScore() const override;     // severity + days urgency + low prep
     nlohmann::json toJson()     const override;
 
 private:
