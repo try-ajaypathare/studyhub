@@ -168,15 +168,41 @@ window.Alerts = (() => {
       osc.stop(start + duration + 0.02);
     },
     playCritical() {
-      this.beep(659.25, 0.20, 0.14);          // E5
-      this.beep(880.00, 0.24, 0.14, 'sine', 0.16);  // A5
+      this.beep(659.25, 0.20, 0.14);                  // E5
+      this.beep(880.00, 0.24, 0.14, 'sine', 0.16);    // A5
     },
     playWarning() {
-      this.beep(523.25, 0.16, 0.10);          // C5
+      this.beep(523.25, 0.16, 0.10);                  // C5
+    },
+    playTick() {
+      // Soft drawer-open tick — also serves as the AudioContext primer.
+      this.beep(880, 0.06, 0.05);
+    },
+    playTest() {
+      // Two quick C-major notes so the user hears that sound is working.
+      this.beep(523.25, 0.10, 0.10);                  // C5
+      this.beep(659.25, 0.14, 0.10, 'sine', 0.10);    // E5
     },
     setEnabled(on) {
       this.enabled = !!on;
       localStorage.setItem('ssaas.sound', on ? 'on' : 'off');
+      if (on) this.playTest();    // immediate audible confirmation
+    },
+    // Called once on the first user gesture so the AudioContext is
+    // unlocked even before any alert sound needs to play.
+    primeOnFirstGesture() {
+      if (this._primed) return;
+      const handler = () => {
+        this._primed = true;
+        this.ensureCtx();
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+        document.removeEventListener('click',    handler, true);
+        document.removeEventListener('keydown',  handler, true);
+        document.removeEventListener('touchend', handler, true);
+      };
+      document.addEventListener('click',    handler, true);
+      document.addEventListener('keydown',  handler, true);
+      document.addEventListener('touchend', handler, true);
     },
   };
 
@@ -262,6 +288,9 @@ window.Alerts = (() => {
     ensureDrawer();
     document.body.classList.add('alert-drawer-open');
     renderSoundButton();
+    // Bell click is a user gesture — play a tiny tick so the user can confirm
+    // sound is working AND so AudioContext gets unlocked for later alerts.
+    Sound.playTick();
   }
   function closeDrawer() {
     document.body.classList.remove('alert-drawer-open');
@@ -538,6 +567,10 @@ window.Alerts = (() => {
   }
 
   function init() {
+    // Unlock AudioContext on the first interaction of the session so all
+    // subsequent alert chimes play even though browsers block autoplay.
+    Sound.primeOnFirstGesture();
+
     // Wire bell icon (added by injectShell)
     document.addEventListener('click', e => {
       const bell = e.target.closest('.bell');
