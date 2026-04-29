@@ -135,7 +135,16 @@ window.Alerts = (() => {
     writeState(s);
   }
 
-  /* ---------- Sound system (Web Audio API) ---------- */
+  /* ---------- Sound system (Web Audio API) ----------
+   *
+   * Synthesises proper bell-like notification dings, not musical tones.
+   *
+   * A real notification (think iPhone "Tri-tone" or Android "Bell") is
+   * a bell timbre: multiple harmonic oscillators stacked together, each
+   * with a sharp attack + long exponential decay. We get the metallic
+   * "ding" character by detuning the high harmonics slightly so they
+   * beat against each other.
+   */
 
   const Sound = {
     ctx: null,
@@ -148,41 +157,84 @@ window.Alerts = (() => {
         return this.ctx;
       } catch { return null; }
     },
-    beep(freq, duration, volume = 0.12, type = 'sine', delay = 0) {
+
+    // Plays a single bell strike at the given fundamental frequency.
+    // Layers fundamental + 2x + ~3x + 4.5x harmonics. Each harmonic gets
+    // a quick attack and an exponential decay scaled by its octave —
+    // higher partials die faster, mimicking an actual struck bell.
+    bell(fundamental, duration = 0.9, volume = 0.18, delay = 0) {
       if (!this.enabled) return;
       const ctx = this.ensureCtx();
       if (!ctx) return;
-      // Some browsers suspend the context until user interaction.
       if (ctx.state === 'suspended') ctx.resume();
-      const start = ctx.currentTime + delay;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = type;
-      osc.frequency.value = freq;
-      // Quick attack + smooth tail to avoid click/pops.
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + duration + 0.02);
+      const t0 = ctx.currentTime + delay;
+
+      // Harmonic stack — slight inharmonic ratios produce the bell shimmer.
+      const harmonics = [
+        { mult: 1.00,  gain: 1.00, decay: 1.00 }, // fundamental
+        { mult: 2.00,  gain: 0.55, decay: 0.85 }, // octave
+        { mult: 3.01,  gain: 0.32, decay: 0.65 }, // octave + 5th, detuned
+        { mult: 4.50,  gain: 0.16, decay: 0.45 }, // upper partial
+        { mult: 5.97,  gain: 0.08, decay: 0.30 }, // shimmer
+      ];
+
+      // Master output — soft tube filtering for warmth.
+      const master = ctx.createGain();
+      master.gain.value = 1.0;
+      master.connect(ctx.destination);
+
+      harmonics.forEach(h => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = fundamental * h.mult;
+
+        const peak = volume * h.gain;
+        const tail = duration * h.decay;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.linearRampToValueAtTime(peak, t0 + 0.004);             // sharp attack
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + tail);       // long decay
+
+        osc.connect(gain).connect(master);
+        osc.start(t0);
+        osc.stop(t0 + tail + 0.05);
+      });
     },
+
+    // P0 critical alert — two-note urgent ding.
+    // Notes cascade quickly (A5 then E5) like phone notification chimes.
     playCritical() {
-      this.beep(659.25, 0.20, 0.14);                  // E5
-      this.beep(880.00, 0.24, 0.14, 'sine', 0.16);    // A5
+      this.bell(880.00, 0.95, 0.20);            // A5
+      this.bell(659.25, 1.05, 0.16, 0.18);      // E5 — 180 ms after first
     },
+
+    // P1 warning — single softer bell ding.
     playWarning() {
-      this.beep(523.25, 0.16, 0.10);                  // C5
+      this.bell(659.25, 0.85, 0.14);            // E5
     },
+
+    // Tick — quick high blip when the drawer opens. Also primes AudioContext.
     playTick() {
-      // Soft drawer-open tick — also serves as the AudioContext primer.
-      this.beep(880, 0.06, 0.05);
+      const ctx = this.ensureCtx();
+      if (!ctx || !this.enabled) return;
+      if (ctx.state === 'suspended') ctx.resume();
+      const t0 = ctx.currentTime;
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 1200;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(0.05, t0 + 0.003);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.07);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + 0.10);
     },
-    playTest() {
-      // Two quick C-major notes so the user hears that sound is working.
-      this.beep(523.25, 0.10, 0.10);                  // C5
-      this.beep(659.25, 0.14, 0.10, 'sine', 0.10);    // E5
-    },
+
+    // Test sound — same as warning so the user instantly hears the
+    // exact alert tone they will get for incoming P1+ notifications.
+    playTest() { this.playWarning(); },
+
     setEnabled(on) {
       this.enabled = !!on;
       localStorage.setItem('ssaas.sound', on ? 'on' : 'off');
